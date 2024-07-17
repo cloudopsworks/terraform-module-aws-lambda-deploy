@@ -5,7 +5,8 @@
 #
 locals {
   #config_file_sha  = sha1(join("", [for f in fileset(".", "${path.root}/${var.config_source_folder}/**") : filesha1(f)]))
-  config_file_sha  = upper(substr(split(" ", file(var.config_hash_file))[0], 0, 10))
+  source_root      = var.absolute_path != "" ? var.absolute_path : path.root
+  config_file_sha  = upper(substr(split(" ", file("${local.source_root}/${var.config_hash_file}"))[0], 0, 10))
   bucket_path      = var.bluegreen_identifier == "" ? "${var.release_name}/${var.source_version}/${var.source_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}.zip" : "${var.release_name}/${var.source_version}/${var.source_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}-${var.bluegreen_identifier}.zip"
   version_label    = var.bluegreen_identifier == "" ? "${var.release_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}" : "${var.release_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}-${var.bluegreen_identifier}"
   download_java    = length(regexall("(?i:.*java.*|.*corretto.*)", lower(var.solution_stack))) > 0 && !var.force_source_compressed
@@ -14,7 +15,6 @@ locals {
   is_tarz          = length(regexall("(?i:tar.z|tz)", var.source_compressed_type)) > 0
   is_targz         = length(regexall("(?i:tar.gz|tgz)", var.source_compressed_type)) > 0
   is_tarbz         = length(regexall("(?i:tar.bz|tar.bz2|tbz|tbz2)", var.source_compressed_type)) > 0
-  source_root      = var.absolute_path != "" ? var.absolute_path : path.root
 }
 
 resource "null_resource" "build_package" {
