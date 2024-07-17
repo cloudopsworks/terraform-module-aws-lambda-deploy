@@ -87,3 +87,9 @@ variable "package_type" {
   description = "(optional) Type of the package from github (MAVEN,NPM,DOCKER,NET)"
   default     = ""
 }
+
+variable "absolute_path" {
+  type        = string
+  description = "(optional) Absolute path to the lambda function"
+  default     = ""
+}

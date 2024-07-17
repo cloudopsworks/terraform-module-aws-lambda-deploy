@@ -14,6 +14,7 @@ locals {
   is_tarz          = length(regexall("(?i:tar.z|tz)", var.source_compressed_type)) > 0
   is_targz         = length(regexall("(?i:tar.gz|tgz)", var.source_compressed_type)) > 0
   is_tarbz         = length(regexall("(?i:tar.bz|tar.bz2|tbz|tbz2)", var.source_compressed_type)) > 0
+  source_root      = var.absolute_path != "" ? var.absolute_path : path.root
 }
 
 resource "null_resource" "build_package" {
@@ -94,7 +95,7 @@ resource "null_resource" "release_conf_copy" {
   }
 
   provisioner "local-exec" {
-    command = "cp -pfr ${path.root}/${var.config_source_folder}/. ${path.root}/.work/${var.release_name}/build/"
+    command = "cp -pfr ${local.source_root}/${var.config_source_folder}/. ${path.root}/.work/${var.release_name}/build/"
   }
 
   #  # EB extensions
@@ -131,7 +132,7 @@ resource "null_resource" "release_conf_copy_node" {
   }
 
   provisioner "local-exec" {
-    command = "cp -pfr ${path.root}/${var.config_source_folder}/.env ${path.root}/.work/${var.release_name}/build/"
+    command = "cp -pfr ${local.source_root}/${var.config_source_folder}/.env ${path.root}/.work/${var.release_name}/build/"
   }
 }
 

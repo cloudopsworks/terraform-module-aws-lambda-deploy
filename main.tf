@@ -12,12 +12,13 @@ module "download_version" {
   source_version       = var.release.source.version
   namespace            = var.namespace
   repository_owner     = var.repository_owner
-  config_source_folder = "${var.absolute_path}/values/${var.release.name}"
+  config_source_folder = "values/${var.release.name}"
   config_hash_file     = ".values_hash_${each.value.release.name}"
   github_package       = true
   package_name         = var.release.source.githubPackages.name
   package_type         = var.release.source.githubPackages.type
   solution_stack       = var.lambda.runtime
+  absolute_path        = var.absolute_path
 }
 
 resource "aws_lambda_function" "lambda_function" {
