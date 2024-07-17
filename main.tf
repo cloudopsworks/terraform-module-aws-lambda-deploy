@@ -13,7 +13,7 @@ module "download_version" {
   namespace            = var.namespace
   repository_owner     = var.repository_owner
   config_source_folder = "values/${var.release.name}"
-  config_hash_file     = ".values_hash_${each.value.release.name}"
+  config_hash_file     = ".values_hash_${var.release.name}"
   github_package       = true
   package_name         = var.release.source.githubPackages.name
   package_type         = var.release.source.githubPackages.type
@@ -34,7 +34,7 @@ resource "aws_lambda_function" "lambda_function" {
   timeout                        = try(var.lambda.timeout, 3)
   publish                        = true
   #  publish                        = tobool(local.publish_conf[each.key])
-  #source_code_hash = base64sha256(format("%s-%s", file(".values_hash_${each.value.release.name}"), each.value.release.source.version))
+  #source_code_hash = base64sha256(format("%s-%s", file(".values_hash_${var.release.name}"), each.value.release.source.version))
 
   vpc_config {
     security_group_ids = try(var.lambda.vpc.enabled, false) ? try(var.lambda.vpc.security_groups, []) : []
