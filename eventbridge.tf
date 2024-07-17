@@ -4,7 +4,8 @@
 #            Distributed Under Apache v2.0 License
 #
 resource "aws_scheduler_schedule_group" "environ" {
-  name = format("sched-grp-%s", local.system_name_short)
+  count = try(var.lambda.schedule.enabled, false) ? 1 : 0
+  name  = format("sched-grp-%s", local.system_name_short)
 
   tags = merge({
     Namespace = var.namespace
@@ -14,8 +15,9 @@ resource "aws_scheduler_schedule_group" "environ" {
 }
 
 resource "aws_scheduler_schedule" "lambda_function" {
+  count       = try(var.lambda.schedule.enabled, false) ? 1 : 0
   name        = format("sched-%s-%s", var.release.name, local.system_name_short)
-  group_name  = aws_scheduler_schedule_group.environ.name
+  group_name  = aws_scheduler_schedule_group.environ[0].name
   description = format("Schedule for %s:%s System: %s", var.release.name, var.namespace, local.system_name)
   flexible_time_window {
     mode                      = try(var.lambda.schedule.flexible.enabled, false) ? "FLEXIBLE" : "OFF"
