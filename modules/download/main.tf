@@ -109,7 +109,7 @@ resource "null_resource" "release_conf_copy" {
   #  }
 
   provisioner "local-exec" {
-    command = "echo \"Release: ${var.source_name} v${var.source_version} - Environment: ${var.release_name} / ${var.namespace}\" > .work/${var.release_name}/build/VERSION"
+    command = "echo \"Release: ${var.source_name} v${var.source_version} - Environment: ${var.release_name} / ${var.namespace} - Hash: ${local.config_file_sha} \" > .work/${var.release_name}/build/VERSION"
   }
 }
 
@@ -153,7 +153,7 @@ resource "null_resource" "release_download_java" {
   }
 
   provisioner "local-exec" {
-    command = "chmod +x .work/${var.release_name}/build/app.jar"
+    command = "chmod +x ${path.root}/.work/${var.release_name}/build/app.jar"
   }
 }
 
