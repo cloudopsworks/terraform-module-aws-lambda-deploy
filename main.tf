@@ -27,7 +27,7 @@ resource "aws_lambda_function" "lambda_function" {
   role                           = try(aws_iam_role.lambda_function[0].arn, aws_iam_role.default_lambda_function.arn)
   handler                        = var.lambda.handler
   runtime                        = var.lambda.runtime
-  filename                       = "${path.module}/${module.download_version.package_file}"
+  filename                       = module.download_version.package_file
   package_type                   = "Zip"
   memory_size                    = try(var.lambda.memory_size, 128)
   reserved_concurrent_executions = try(var.lambda.reserved_concurrency, -1)

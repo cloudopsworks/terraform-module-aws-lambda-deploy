@@ -56,7 +56,7 @@ resource "null_resource" "build_package" {
 #}
 
 output "package_file" {
-  value = "${path.root}/.work/${var.release_name}/target/package-${local.version_label}.zip"
+  value = abspath("${path.root}/.work/${var.release_name}/target/package-${local.version_label}.zip")
 }
 
 resource "null_resource" "release_pre" {
