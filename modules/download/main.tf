@@ -39,7 +39,7 @@ resource "null_resource" "build_package" {
   }
 
   provisioner "local-exec" {
-    command     = "zip -rqy ../target/package-${local.version_label}.zip ."
+    command     = "zip -rqy ${local.tmp_dir}/${var.release_name}/target/package-${local.version_label}.zip ."
     working_dir = "${local.tmp_dir}/${var.release_name}/build"
   }
 
