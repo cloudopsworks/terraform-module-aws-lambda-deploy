@@ -16,11 +16,11 @@ resource "null_resource" "release_download_gh_java" {
   }
 
   provisioner "local-exec" {
-    command = "${path.module}/scripts/gh-download-java.sh ${var.repository_owner} ${var.source_name} ${var.source_version} ${var.package_name} ${var.package_type} .work/${var.release_name}/build/app.jar"
+    command = "${path.module}/scripts/gh-download-java.sh ${var.repository_owner} ${var.source_name} ${var.source_version} ${var.package_name} ${var.package_type} ${local.tmp_dir}/${var.release_name}/build/app.jar"
   }
 
   provisioner "local-exec" {
-    command = "chmod +x .work/${var.release_name}/build/app.jar"
+    command = "chmod +x ${local.tmp_dir}/${var.release_name}/build/app.jar"
   }
 }
 
@@ -37,7 +37,7 @@ resource "null_resource" "release_download_gh_node" {
   }
 
   provisioner "local-exec" {
-    command = "${path.module}/scripts/gh-download-npm.sh ${var.repository_owner} ${var.source_name} ${var.source_version} ${var.package_name} ${var.package_type} .work/${var.release_name}/build/source-app.tgz"
+    command = "${path.module}/scripts/gh-download-npm.sh ${var.repository_owner} ${var.source_name} ${var.source_version} ${var.package_name} ${var.package_type} ${local.tmp_dir}/${var.release_name}/build/source-app.tgz"
   }
 
   # Unpack the tarball strip the top level directory: package/

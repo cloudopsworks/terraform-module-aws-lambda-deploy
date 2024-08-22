@@ -110,7 +110,7 @@ resource "null_resource" "release_conf_copy" {
   #  }
 
   provisioner "local-exec" {
-    command = "echo \"Release: ${var.source_name} v${var.source_version} - Environment: ${var.release_name} / ${var.namespace} - Hash: ${local.config_file_sha} \" > .work/${var.release_name}/build/VERSION"
+    command = "echo \"Release: ${var.source_name} v${var.source_version} - Environment: ${var.release_name} / ${var.namespace} - Hash: ${local.config_file_sha} \" > ${local.tmp_dir}/${var.release_name}/build/VERSION"
   }
 }
 
@@ -150,7 +150,7 @@ resource "null_resource" "release_download_java" {
   }
 
   provisioner "local-exec" {
-    command = "${path.module}/scripts/github-asset.sh ${var.repository_owner} ${var.source_name} v${var.source_version} ${var.source_name}-${var.source_version}.jar .work/${var.release_name}/build/app.jar"
+    command = "${path.module}/scripts/github-asset.sh ${var.repository_owner} ${var.source_name} v${var.source_version} ${var.source_name}-${var.source_version}.jar ${local.tmp_dir}/${var.release_name}/build/app.jar"
   }
 
   provisioner "local-exec" {
