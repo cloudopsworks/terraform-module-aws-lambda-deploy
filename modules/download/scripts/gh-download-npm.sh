@@ -28,10 +28,13 @@ registry=$(echo $package_name | sed -n 's/^\(.*\)\/.*/\1/p')
 echo "//npm.pkg.github.com/:_authToken=${GITHUB_API_TOKEN}" >> $HOME/.npmrc
 echo "${registry}:registry=https://npm.pkg.github.com/" >> $HOME/.npmrc
 
+npm version
+
 # Download asset file.
 echo "Downloading asset..." >&2
 DEST_DIR=$(dirname $name)
-FNAME=$(npm pack ${package_name}@${version} --pack-destination $DEST_DIR --json | yq '.[].filename'| tr -d '@' | tr '/' '-')
+ANAME=$(npm pack --ignore-scripts ${package_name}@${version} --pack-destination $DEST_DIR --json | yq e '.[].filename')
+FNAME=$(echo "$ANAME" | tr -d '@' | tr '/' '-')
 echo "Moving $DEST_DIR/$FNAME to $name"
 mv $DEST_DIR/$FNAME $name
 echo "$0 done." >&2
