@@ -57,12 +57,12 @@ resource "null_resource" "build_package" {
 #}
 
 output "package_file" {
-  value = abspath("${local.tmp_dir}/${var.release_name}/target/package-${local.version_label}.zip")
+  value = "${local.tmp_dir}/${var.release_name}/target/package-${local.version_label}.zip"
 }
 
 resource "null_resource" "release_pre" {
   triggers = {
-    always_run = "${timestamp()}"
+    always_run = timestamp()
   }
 
   provisioner "local-exec" {
