@@ -19,7 +19,7 @@ data "aws_iam_policy_document" "assume_role" {
 }
 
 resource "aws_iam_role" "default_lambda_function" {
-  name               = "role-${local.system_name}"
+  name               = "role-lambda-default-${var.release.name}-${var.namespace}"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 
   tags = merge({
@@ -43,13 +43,13 @@ data "aws_iam_policy_document" "lambda_function_logs" {
       "logs:PutLogEvents",
     ]
 
-    resources = ["arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/*"]
+    resources = ["arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.namespace}/${var.release.name}*"]
   }
 }
 
 
 resource "aws_iam_policy" "lambda_function_logs" {
-  name        = "policy-${local.system_name}"
+  name        = "policy-lambda-logs-${var.release.name}-${var.namespace}"
   path        = "/"
   description = "IAM policy for logging from a lambda"
   policy      = data.aws_iam_policy_document.lambda_function_logs.json

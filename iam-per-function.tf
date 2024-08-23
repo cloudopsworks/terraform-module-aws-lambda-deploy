@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "lambda_function" {
 
 resource "aws_iam_role" "lambda_function" {
   count              = try(var.lambda.iam.enabled, false) ? 1 : 0
-  name               = "role-${var.release.name}-${local.system_name_short}"
+  name               = "role-lambda-${var.release.name}-${var.namespace}"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 
   tags = merge({
@@ -41,7 +41,7 @@ data "aws_iam_policy_document" "lambda_function_combi" {
 
 resource "aws_iam_role_policy" "lambda_function" {
   count  = try(var.lambda.iam.enabled, false) ? 1 : 0
-  name   = "policy-${var.release.name}-${local.system_name_short}"
+  name   = "policy-${var.release.name}-${var.namespace}"
   role   = aws_iam_role.lambda_function[0].name
   policy = data.aws_iam_policy_document.lambda_function_combi[0].json
 }

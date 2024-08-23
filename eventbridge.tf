@@ -5,7 +5,7 @@
 #
 resource "aws_scheduler_schedule_group" "environ" {
   count = try(var.lambda.schedule.enabled, false) ? 1 : 0
-  name  = format("sched-grp-%s", local.system_name_short)
+  name  = format("sched-grp-%s-%s", var.release.name, var.namespace)
 
   tags = merge({
     Namespace = var.namespace
@@ -16,7 +16,7 @@ resource "aws_scheduler_schedule_group" "environ" {
 
 resource "aws_scheduler_schedule" "lambda_function" {
   count       = try(var.lambda.schedule.enabled, false) ? 1 : 0
-  name        = format("sched-%s-%s", var.release.name, local.system_name_short)
+  name        = format("sched-%s-%s", var.release.name, var.namespace)
   group_name  = aws_scheduler_schedule_group.environ[0].name
   description = format("Schedule for %s:%s System: %s", var.release.name, var.namespace, local.system_name)
   flexible_time_window {

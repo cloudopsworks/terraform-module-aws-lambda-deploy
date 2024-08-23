@@ -5,6 +5,6 @@
 #
 resource "aws_cloudwatch_log_group" "lambda_function_logs" {
   name              = "/aws/lambda/${var.namespace}/${var.release.name}"
-  retention_in_days = 14
+  retention_in_days = try(var.lambda.log_retention_days, 14)
   tags              = local.all_tags
 }
