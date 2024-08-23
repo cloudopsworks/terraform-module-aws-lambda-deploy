@@ -5,8 +5,7 @@
 #
 
 module "download_version" {
-  source = "./modules/download"
-
+  source               = "./modules/download"
   release_name         = var.release.name
   source_name          = var.release.source.name
   source_version       = var.release.source.version
@@ -53,6 +52,7 @@ resource "aws_lambda_function" "lambda_function" {
   depends_on = [
     aws_iam_role_policy_attachment.lambda_function_logs,
     aws_cloudwatch_log_group.lambda_function_logs,
+    module.download_version,
   ]
 }
 

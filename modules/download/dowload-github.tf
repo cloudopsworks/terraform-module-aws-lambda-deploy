@@ -42,12 +42,12 @@ resource "null_resource" "release_download_gh_node" {
 
   # Unpack the tarball strip the top level directory: package/
   provisioner "local-exec" {
-    command     = "tar --strip-components=1 -zvxf source-app.tgz"
+    command     = "tar --strip-components=1 -zxf source-app.tgz"
     working_dir = "${local.tmp_dir}/${var.release_name}/build/"
   }
 
   provisioner "local-exec" {
-    command     = "rm -vf source-app.tgz"
+    command     = "rm -f source-app.tgz"
     working_dir = "${local.tmp_dir}/${var.release_name}/build/"
   }
 }
