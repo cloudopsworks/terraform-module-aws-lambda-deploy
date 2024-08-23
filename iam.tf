@@ -19,7 +19,7 @@ data "aws_iam_policy_document" "assume_role" {
 }
 
 resource "aws_iam_role" "default_lambda_function" {
-  name               = "role-lambda-default-${var.release.name}-${var.namespace}"
+  name               = "${var.release.name}-${var.namespace}-default-role"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 
   tags = merge({
@@ -49,7 +49,7 @@ data "aws_iam_policy_document" "lambda_function_logs" {
 
 
 resource "aws_iam_policy" "lambda_function_logs" {
-  name        = "policy-lambda-logs-${var.release.name}-${var.namespace}"
+  name        = "${var.release.name}-${var.namespace}-logs-policy"
   path        = "/"
   description = "IAM policy for logging from a lambda"
   policy      = data.aws_iam_policy_document.lambda_function_logs.json

@@ -36,7 +36,7 @@ data "aws_iam_policy_document" "lambda_exec" {
 
 resource "aws_iam_role" "lambda_exec" {
   count              = try(var.lambda.iam.execRole.enabled, false) ? 1 : 0
-  name               = "role-lambda-exec-${var.release.name}-${var.namespace}"
+  name               = "${var.release.name}-${var.namespace}-exec-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role[0].json
 
   tags = merge({
@@ -49,7 +49,7 @@ resource "aws_iam_role" "lambda_exec" {
 
 resource "aws_iam_role_policy" "lambda_exec" {
   count  = try(var.lambda.iam.execRole.enabled, false) ? 1 : 0
-  name   = "policy-lambda-exec-${var.release.name}-${var.namespace}"
+  name   = "${var.release.name}-${var.namespace}-exec-policy"
   policy = data.aws_iam_policy_document.lambda_exec[0].json
   role   = aws_iam_role.lambda_exec[0].id
 }
