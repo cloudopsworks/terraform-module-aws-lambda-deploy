@@ -27,6 +27,9 @@ resource "aws_iam_role" "default_lambda_function" {
     },
     local.all_tags
   )
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # See also the following AWS managed policy: AWSLambdaBasicExecutionRole
@@ -56,6 +59,9 @@ resource "aws_iam_policy" "lambda_function_logs" {
     },
     local.all_tags
   )
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_function_logs" {
