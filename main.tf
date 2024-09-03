@@ -3,6 +3,13 @@
 #            On GitHub: https://github.com/cloudopsworks
 #            Distributed Under Apache v2.0 License
 #
+locals {
+  release_tags = merge(var.extra_tags, {
+    Environment = format("%s-%s", var.release.name, var.namespace)
+    Namespace   = var.namespace
+    Release     = var.release.name
+  })
+}
 
 module "download_version" {
   source               = "./modules/download"
@@ -12,12 +19,12 @@ module "download_version" {
   namespace            = var.namespace
   repository_owner     = var.repository_owner
   config_source_folder = "values/${var.release.name}"
-  config_hash_file     = ".values_hash_${var.release.name}"
-  github_package       = true
-  package_name         = var.release.source.githubPackages.name
-  package_type         = var.release.source.githubPackages.type
-  solution_stack       = var.lambda.runtime
-  absolute_path        = var.absolute_path
+  #  config_hash_file     = ".values_hash_${var.release.name}"
+  github_package = true
+  package_name   = var.release.source.githubPackages.name
+  package_type   = var.release.source.githubPackages.type
+  solution_stack = var.lambda.runtime
+  absolute_path  = var.absolute_path
 }
 
 resource "aws_lambda_function" "lambda_function" {
@@ -47,7 +54,7 @@ resource "aws_lambda_function" "lambda_function" {
     }
   }
 
-  tags = local.all_tags
+  tags = merge(local.release_tags, local.all_tags)
 
   depends_on = [
     aws_iam_role_policy_attachment.lambda_function_logs,

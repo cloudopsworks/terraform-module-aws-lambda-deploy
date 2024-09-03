@@ -10,7 +10,7 @@ resource "null_resource" "release_download_gh_java" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -31,7 +31,7 @@ resource "null_resource" "release_download_gh_node" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }

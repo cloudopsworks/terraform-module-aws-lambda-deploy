@@ -59,10 +59,10 @@ variable "config_source_folder" {
   description = "(required) Location [root relative] of the configuration source."
 }
 
-variable "config_hash_file" {
-  type        = string
-  description = "(required) Hashfile location to track source "
-}
+# variable "config_hash_file" {
+#   type        = string
+#   description = "(required) Hashfile location to track source "
+# }
 
 variable "extra_tags" {
   type        = map(string)

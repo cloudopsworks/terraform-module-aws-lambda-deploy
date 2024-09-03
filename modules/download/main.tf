@@ -7,9 +7,9 @@ locals {
   tmp_dir = "/tmp/${uuid()}/work"
   #config_file_sha  = sha1(join("", [for f in fileset(".", "${path.root}/${var.config_source_folder}/**") : filesha1(f)]))
   source_root      = var.absolute_path != "" ? var.absolute_path : path.root
-  config_file_sha  = upper(substr(split(" ", file("${local.source_root}/${var.config_hash_file}"))[0], 0, 10))
-  bucket_path      = var.bluegreen_identifier == "" ? "${var.release_name}/${var.source_version}/${var.source_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}.zip" : "${var.release_name}/${var.source_version}/${var.source_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}-${var.bluegreen_identifier}.zip"
-  version_label    = var.bluegreen_identifier == "" ? "${var.release_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}" : "${var.release_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}-${var.bluegreen_identifier}"
+  #config_file_sha  = upper(substr(split(" ", file("${local.source_root}/${var.config_hash_file}"))[0], 0, 10))
+#   bucket_path      = var.bluegreen_identifier == "" ? "${var.release_name}/${var.source_version}/${var.source_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}.zip" : "${var.release_name}/${var.source_version}/${var.source_name}-${var.source_version}-${var.namespace}-${local.config_file_sha}-${var.bluegreen_identifier}.zip"
+  version_label    = var.bluegreen_identifier == "" ? "${var.release_name}-${var.source_version}-${var.namespace}" : "${var.release_name}-${var.source_version}-${var.namespace}-${var.bluegreen_identifier}"
   download_java    = length(regexall("(?i:.*java.*|.*corretto.*)", lower(var.solution_stack))) > 0 && !var.force_source_compressed
   download_package = length(regexall("(?i:.*java.*|.*corretto.*)", lower(var.solution_stack))) <= 0 || var.force_source_compressed
   is_tar           = (var.source_compressed_type == "tar")
@@ -33,7 +33,7 @@ resource "null_resource" "build_package" {
     null_resource.release_conf_copy
   ]
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -90,7 +90,7 @@ resource "null_resource" "release_conf_copy" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -110,7 +110,7 @@ resource "null_resource" "release_conf_copy" {
   #  }
 
   provisioner "local-exec" {
-    command = "echo \"Release: ${var.source_name} v${var.source_version} - Environment: ${var.release_name} / ${var.namespace} - Hash: ${local.config_file_sha} \" > ${local.tmp_dir}/${var.release_name}/build/VERSION"
+    command = "echo \"Release: ${var.source_name} v${var.source_version} - Environment: ${var.release_name} / ${var.namespace} \" > ${local.tmp_dir}/${var.release_name}/build/VERSION"
   }
 }
 
@@ -128,7 +128,7 @@ resource "null_resource" "release_conf_copy_node" {
   count = length(regexall("(?i:.*node.*)", lower(var.solution_stack))) > 0 ? 1 : 0
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
   }
 
@@ -144,7 +144,7 @@ resource "null_resource" "release_download_java" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+#     #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -165,7 +165,7 @@ resource "null_resource" "release_download" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+#     #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -183,7 +183,7 @@ resource "null_resource" "uncompress_zip" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -207,7 +207,7 @@ resource "null_resource" "uncompress_tar" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -231,7 +231,7 @@ resource "null_resource" "uncompress_tar_z" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -255,7 +255,7 @@ resource "null_resource" "uncompress_tar_gz" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
@@ -279,7 +279,7 @@ resource "null_resource" "uncompress_tar_bz" {
   ]
 
   triggers = {
-    dir_sha1 = local.config_file_sha
+    #dir_sha1 = local.config_file_sha
     version  = var.source_version
     #always_run = "${timestamp()}"
   }
