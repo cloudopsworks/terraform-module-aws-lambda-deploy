@@ -42,15 +42,47 @@ resource "aws_lambda_function" "lambda_function" {
   #  publish                        = tobool(local.publish_conf[each.key])
   #source_code_hash = base64sha256(format("%s-%s", file(".values_hash_${var.release.name}"), each.value.release.source.version))
 
-  vpc_config {
-    security_group_ids = try(var.lambda.vpc.enabled, false) ? try(var.lambda.vpc.security_groups, []) : []
-    subnet_ids         = try(var.lambda.vpc.enabled, false) ? try(var.lambda.vpc.subnets, []) : []
+  dynamic "vpc_config" {
+    for_each = try(var.lambda.vpc.enabled, false) ? [1] : []
+    content {
+      security_group_ids = var.lambda.vpc.security_groups
+      subnet_ids         = var.lambda.vpc.subnets
+    }
   }
 
   environment {
     variables = {
       for item in var.lambda.environment.variables :
       item.name => item.value
+    }
+  }
+
+  logging_config {
+    application_log_level = try(var.lambda.logging.application_log_level, null)
+    log_format            = try(var.lambda.logging.log_format, "JSON")
+    log_group             = aws_cloudwatch_log_group.lambda_function_logs.name
+    system_log_level      = try(var.lambda.logging.system_log_level, null)
+  }
+
+  dynamic "ephemeral_storage" {
+    for_each = try(var.lambda.ephemeral_storage.enabled, false) ? [1] : []
+    content {
+      size = try(var.lambda.ephemeral_storage.size, 512)
+    }
+  }
+
+  dynamic "file_system_config" {
+    for_each = try(var.lambda.efs.enabled, false) ? [1] : []
+    content {
+      arn              = var.lambda.efs.arn
+      local_mount_path = var.lambda.efs.local_mount_path
+    }
+  }
+
+  dynamic "tracing_config" {
+    for_each = try(var.lambda.tracing.enabled, false) ? [1] : []
+    content {
+      mode = var.lambda.tracing.mode
     }
   }
 
