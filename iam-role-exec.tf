@@ -56,7 +56,7 @@ resource "aws_iam_role_policy" "lambda_exec" {
 
 
 data "aws_iam_policy_document" "lambda_exec_ec2" {
-  count   = try(var.lambda.iam.execRole.enabled, false) && try(var.lambda.vpc.create_security_group, false) && try(var.lambda.vpc.enabled, false) ? 1 : 0
+  count   = try(var.lambda.iam.execRole.enabled, false) && try(var.lambda.vpc.enabled, false) ? 1 : 0
   version = "2012-10-17"
   statement {
     effect = "Allow"
@@ -73,7 +73,7 @@ data "aws_iam_policy_document" "lambda_exec_ec2" {
 }
 
 resource "aws_iam_role_policy" "lambda_exec_ec2" {
-  count  = try(var.lambda.iam.execRole.enabled, false) && try(var.lambda.vpc.create_security_group, false) && try(var.lambda.vpc.enabled, false) ? 1 : 0
+  count  = try(var.lambda.iam.execRole.enabled, false) && try(var.lambda.vpc.enabled, false) ? 1 : 0
   name   = "${var.release.name}-${var.namespace}-ec2-exec-policy"
   policy = data.aws_iam_policy_document.lambda_exec_ec2[0].json
   role   = aws_iam_role.lambda_exec[0].id
