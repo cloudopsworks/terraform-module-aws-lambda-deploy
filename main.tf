@@ -45,7 +45,7 @@ resource "aws_lambda_function" "lambda_function" {
   dynamic "vpc_config" {
     for_each = try(var.lambda.vpc.enabled, false) ? [1] : []
     content {
-      security_group_ids = var.lambda.vpc.security_groups
+      security_group_ids = try(var.lambda.vpc.create_security_group, false) ? [aws_security_group.this[0].id] : var.lambda.vpc.security_groups
       subnet_ids         = var.lambda.vpc.subnets
     }
   }
