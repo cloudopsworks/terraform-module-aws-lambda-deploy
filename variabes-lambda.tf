@@ -30,3 +30,20 @@ variable "absolute_path" {
   type        = string
   default     = "./"
 }
+
+variable "versions_bucket" {
+  description = "S3 bucket for application versions"
+  type        = string
+}
+
+variable "logs_bucket" {
+  description = "S3 bucket for application logs"
+  type        = string
+  default     = ""
+}
+
+variable "bucket_path" {
+  description = "Path to the S3 bucket"
+  type        = string
+  default     = ""
+}

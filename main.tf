@@ -11,29 +11,14 @@ locals {
   })
 }
 
-module "download_version" {
-  source               = "./modules/download"
-  release_name         = var.release.name
-  source_name          = var.release.source.name
-  source_version       = var.release.source.version
-  namespace            = var.namespace
-  repository_owner     = var.repository_owner
-  config_source_folder = "values/${var.release.name}"
-  #  config_hash_file     = ".values_hash_${var.release.name}"
-  github_package = true
-  package_name   = var.release.source.githubPackages.name
-  package_type   = var.release.source.githubPackages.type
-  solution_stack = var.lambda.runtime
-  absolute_path  = var.absolute_path
-}
-
 resource "aws_lambda_function" "lambda_function" {
   function_name                  = format("%s-%s", var.release.name, var.namespace)
   description                    = "Lambda ${var.release.name}@${var.release.source.version} - ${local.system_name}"
   role                           = try(aws_iam_role.lambda_function[0].arn, aws_iam_role.default_lambda_function.arn)
   handler                        = var.lambda.handler
   runtime                        = var.lambda.runtime
-  filename                       = module.download_version.package_file
+  s3_bucket                      = var.versions_bucket
+  s3_key                         = var.bucket_path
   package_type                   = "Zip"
   memory_size                    = try(var.lambda.memory_size, 128)
   reserved_concurrent_executions = try(var.lambda.reserved_concurrency, -1)
