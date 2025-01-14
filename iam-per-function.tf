@@ -31,6 +31,12 @@ resource "aws_iam_role" "lambda_function" {
   }
 }
 
+resource "aws_iam_role_policy_attachment" "lambda_function" {
+  count      = try(var.lambda.iam.enabled, false) ? length(try(var.lambda.iam.policy_attachments, [])) : 0
+  role       = aws_iam_role.lambda_function[0].name
+  policy_arn = var.lambda.iam.policy_attachments[count.index].arn
+}
+
 data "aws_iam_policy_document" "lambda_function_combi" {
   count = try(var.lambda.iam.enabled, false) ? 1 : 0
   source_policy_documents = [
