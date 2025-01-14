@@ -24,6 +24,9 @@ resource "aws_lambda_function" "lambda_function" {
   reserved_concurrent_executions = try(var.lambda.reserved_concurrency, -1)
   timeout                        = try(var.lambda.timeout, 3)
   publish                        = true
+  layers = [
+    for layer in try(var.lambda.layers, []) : layer.arn
+  ]
   #  publish                        = tobool(local.publish_conf[each.key])
   #source_code_hash = base64sha256(format("%s-%s", file(".values_hash_${var.release.name}"), each.value.release.source.version))
 
