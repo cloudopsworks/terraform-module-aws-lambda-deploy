@@ -102,3 +102,27 @@ resource "aws_lambda_function_url" "lambda_function" {
     }
   }
 }
+
+resource "aws_lambda_provisioned_concurrency_config" "lambda_function" {
+  count                             = try(var.lambda.provisioned_concurrency, 0) > 0 ? 1 : 0
+  function_name                     = aws_lambda_function.lambda_function.function_name
+  qualifier                         = aws_lambda_function.lambda_function.version
+  provisioned_concurrent_executions = var.lambda.provisioned_concurrency
+}
+
+resource "aws_lambda_alias" "lambda_function" {
+  count            = try(var.lambda.alias.enabled, false) ? 1 : 0
+  name             = var.lambda.alias.name
+  function_name    = aws_lambda_function.lambda_function.function_name
+  function_version = aws_lambda_function.lambda_function.version
+  description      = "Alias for ${var.release.name} - ${var.namespace}"
+  dynamic "routing_config" {
+    for_each = length(try(var.lambda.alias.routing_config, [])) > 0 ? [1] : []
+    content {
+      additional_version_weights = {
+        for item in try(var.lambda.alias.routing_config, []) :
+        item.version => item.weight
+      }
+    }
+  }
+}
