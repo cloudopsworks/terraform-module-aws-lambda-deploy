@@ -1,4 +1,4 @@
-name: Terraform Transit Gateway Module
+name: Terraform AWS Lambda Deployment Module
 #logo: logo/logo.jpg
 
 license: "APACHE2"
@@ -8,23 +8,120 @@ copyrights:
     url: "https://cloudops.works"
     year: "2024"
 
-github_repo: cloudopsworks/terraform-module-aws-vpc-setup
+github_repo: cloudopsworks/terraform-module-aws-lambda-deploy
 
 description: |-
-  VPC Module for setting up transit gateway with ResourceAccessMananger support.
+  Terraform module for deploying AWS Lambda functions. This module supports various configurations 
+  including environment variables, VPC settings, and IAM roles. It also allows for the deployment of 
+  Lambda layers and integrates with AWS CloudWatch for logging and monitoring.
 
 # Introduction to the project
-#introduction: |-
-#  This is an introduction.
+introduction: |-
+  The AWS Lambda Deployment Module is a comprehensive Terraform solution for deploying and managing AWS Lambda functions. 
+  Key features include:
+  - Flexible configuration of Lambda function settings including memory, timeout, and concurrency
+  - VPC integration with optional security group creation
+  - Support for Lambda layers and environment variables
+  - CloudWatch logging integration
+  - EFS integration capabilities
+  - Lambda URL endpoints with CORS support
+  - Alias management and provisioned concurrency configuration
 
 # How to use this project
-#usage: |-
+usage: |-
+  To use this module, include it in your Terraform configuration:
+
+  ```hcl
+  module "lambda" {
+    source = "github.com/cloudopsworks/terraform-module-aws-lambda-deploy"
+
+    namespace        = "dev"
+    versions_bucket  = "my-lambda-bucket"
+    bucket_path     = "function.zip"
+
+    release = {
+      name = "my-function"
+      source = {
+        version = "1.0.0"
+      }
+    }
+
+    lambda = {
+      handler  = "index.handler"
+      runtime  = "nodejs18.x"
+      timeout  = 30
+      memory_size = 256
+      environment = {
+        variables = [
+          { name = "ENV", value = "development" }
+        ]
+      }
+    }
+  }
+  ```
 
 # Example usage
-#examples: |-
+examples: |-
+  Example Terragrunt configuration:
+
+  ```hcl
+  # terragrunt.hcl
+  include "root" {
+    path = find_in_parent_folders()
+  }
+
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-aws-lambda-deploy"
+  }
+
+  inputs = {
+    namespace = "prod"
+    release = {
+      name = "api-handler"
+      source = {
+        version = "2.1.0"
+      }
+    }
+    lambda = {
+      handler = "api.handler"
+      runtime = "nodejs18.x"
+      vpc = {
+        enabled = true
+        create_security_group = true
+        subnets = ["subnet-123", "subnet-456"]
+      }
+      environment = {
+        variables = [
+          { name = "NODE_ENV", value = "production" },
+          { name = "API_KEY", value = "secret" }
+        ]
+      }
+    }
+  }
+  ```
 
 # How to get started quickly
-#quickstart: |-
+quickstart: |-
+  1. Prepare your Lambda function code and package it as a ZIP file
+  2. Upload the ZIP file to an S3 bucket
+  3. Create a new Terraform configuration file
+  4. Configure the module with required parameters:
+     - Set the namespace and release name
+     - Configure the Lambda handler and runtime
+     - Specify the S3 bucket and path for the function code
+     - Add any required environment variables
+  5. Initialize Terraform:
+     ```bash
+     terraform init
+     ```
+  6. Review the planned changes:
+     ```bash
+     terraform plan
+     ```
+  7. Apply the configuration:
+     ```bash
+     terraform apply
+     ```
 
 include:
   - "docs/targets.md"
