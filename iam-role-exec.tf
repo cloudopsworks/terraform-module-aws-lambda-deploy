@@ -23,6 +23,7 @@ data "aws_iam_policy_document" "lambda_assume_role" {
 data "aws_iam_policy_document" "lambda_exec" {
   count = try(var.lambda.iam.execRole.enabled, false) ? 1 : 0
   statement {
+    effect = "Allow"
     actions = [
       "lambda:InvokeFunction",
       "lambda:InvokeAsync"
@@ -38,7 +39,6 @@ resource "aws_iam_role" "lambda_exec" {
   count              = try(var.lambda.iam.execRole.enabled, false) ? 1 : 0
   name               = "${var.release.name}-${var.namespace}-exec-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role[0].json
-
   tags = merge({
     Release   = var.release.name
     Namespace = var.namespace
