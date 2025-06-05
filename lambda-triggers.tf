@@ -50,10 +50,10 @@ resource "aws_lambda_event_source_mapping" "lambda_test_sqs_trigger" {
   function_name    = aws_lambda_function.lambda_function.arn
 
   dynamic "filter_criteria" {
-    for_each = try(var.lambda.triggers.sqs.filterCriteria) ? [var.lambda.triggers.sqs.filterCriteria] : []
+    for_each = length(try(var.lambda.triggers.sqs.filterCriteria, {})) ? [1] : []
     content {
       filter {
-        pattern = jsonencode(filter_criteria.value)
+        pattern = jsonencode(var.lambda.triggers.sqs.filterCriteria)
       }
     }
   }
