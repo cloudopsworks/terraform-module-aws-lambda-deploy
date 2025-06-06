@@ -44,10 +44,25 @@ data "aws_sqs_queue" "notification" {
   name  = var.lambda.triggers.sqs.queueName
 }
 
-resource "aws_lambda_event_source_mapping" "lambda_test_sqs_trigger" {
+resource "aws_lambda_event_source_mapping" "lambda_sqs_trigger" {
   count            = try(var.lambda.triggers.sqs.queueName, "") != "" ? 1 : 0
   event_source_arn = data.aws_sqs_queue.notification[0].arn
   function_name    = aws_lambda_function.lambda_function.arn
+  batch_size       = try(var.lambda.triggers.sqs.batchSize, null)
+
+  dynamic "metrics_config" {
+    for_each = try(var.lambda.triggers.sqs.metricsConfig, false) ? [1] : []
+    content {
+      metrics = ["EventCount"]
+    }
+  }
+
+  dynamic "scaling_config" {
+    for_each = try(var.lambda.triggers.sqs.maximumConcurrency, 0) >= 2 ? [1] : []
+    content {
+      maximum_concurrency = var.lambda.triggers.sqs.maximumConcurrency
+    }
+  }
 
   dynamic "filter_criteria" {
     for_each = length(try(var.lambda.triggers.sqs.filterCriteria, {})) > 0 ? [1] : []
@@ -57,5 +72,39 @@ resource "aws_lambda_event_source_mapping" "lambda_test_sqs_trigger" {
       }
     }
   }
+  tags = local.all_tags
 }
 
+#
+# DynamoDB
+#
+data "aws_dynamodb_table" "notification" {
+  count = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
+  name  = var.lambda.triggers.dynamodb.tableName
+}
+
+resource "aws_lambda_event_source_mapping" "lambda_dynamodb_trigger" {
+  count                  = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
+  event_source_arn       = data.aws_dynamodb_table.notification[0].arn
+  function_name          = aws_lambda_function.lambda_function.arn
+  starting_position      = try(var.lambda.triggers.dynamodb.startingPosition, "LATEST")
+  batch_size             = try(var.lambda.triggers.dynamodb.batchSize, null)
+  maximum_retry_attempts = try(var.lambda.triggers.dynamodb.maximumRetryAttempts, null)
+
+  dynamic "metrics_config" {
+    for_each = try(var.lambda.triggers.dynamodb.metricsConfig, false) ? [1] : []
+    content {
+      metrics = ["EventCount"]
+    }
+  }
+
+  dynamic "filter_criteria" {
+    for_each = length(try(var.lambda.triggers.dynamodb.filterCriteria, {})) > 0 ? [1] : []
+    content {
+      filter {
+        pattern = jsonencode(var.lambda.triggers.dynamodb.filterCriteria)
+      }
+    }
+  }
+  tags = local.all_tags
+}
