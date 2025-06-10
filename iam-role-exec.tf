@@ -69,7 +69,7 @@ data "aws_iam_policy_document" "lambda_exec_ec2" {
       "ec2:UnassignPrivateIpAddresses",
     ]
     resources = [
-      "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:network-interface/*",
+      "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*",
     ]
   }
   statement {
@@ -80,7 +80,7 @@ data "aws_iam_policy_document" "lambda_exec_ec2" {
       "ec2:DescribeVpcs",
     ]
     resources = [
-      "*",
+      "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*",
     ]
   }
 }
