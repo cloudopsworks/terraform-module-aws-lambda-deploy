@@ -12,20 +12,12 @@ output "lambda_exec_role" {
   value = try(var.lambda.iam.execRole.enabled, false) ? aws_iam_role.lambda_exec[0].name : ""
 }
 
-output "lambda_default_role_arn" {
-  value = aws_iam_role.default_lambda_function.arn
-}
-
-output "lambda_default_role" {
-  value = aws_iam_role.default_lambda_function.name
-}
-
 output "lambda_function_role_arn" {
-  value = try(var.lambda.iam.enabled, false) ? aws_iam_role.lambda_function[0].arn : ""
+  value = try(var.lambda.iam.enabled, false) ? aws_iam_role.lambda_function[0].arn : aws_iam_role.default_lambda_function[0].arn
 }
 
 output "lambda_function_role" {
-  value = try(var.lambda.iam.enabled, false) ? aws_iam_role.lambda_function[0].name : ""
+  value = try(var.lambda.iam.enabled, false) ? aws_iam_role.lambda_function[0].name : aws_iam_role.default_lambda_function[0].name
 }
 
 output "function_arn" {

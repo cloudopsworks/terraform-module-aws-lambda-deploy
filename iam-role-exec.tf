@@ -38,6 +38,7 @@ data "aws_iam_policy_document" "lambda_exec" {
 resource "aws_iam_role" "lambda_exec" {
   count              = try(var.lambda.iam.execRole.enabled, false) ? 1 : 0
   name               = "${var.release.name}-${var.namespace}-exec-role"
+  path               = "/${lower(var.org.organization_name)}-${lower(var.org.organization_unit)}/"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role[0].json
   tags = merge({
     Release   = var.release.name
@@ -63,12 +64,24 @@ data "aws_iam_policy_document" "lambda_exec_ec2" {
     actions = [
       "ec2:CreateNetworkInterface",
       "ec2:DescribeNetworkInterfaces",
-      "ec2:DescribeSubnets",
       "ec2:DeleteNetworkInterface",
       "ec2:AssignPrivateIpAddresses",
       "ec2:UnassignPrivateIpAddresses",
     ]
-    resources = ["*"]
+    resources = [
+      "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:network-interface/*",
+    ]
+  }
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeVpcs",
+    ]
+    resources = [
+      "*",
+    ]
   }
 }
 

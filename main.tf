@@ -14,7 +14,7 @@ locals {
 resource "aws_lambda_function" "lambda_function" {
   function_name                  = format("%s-%s", var.release.name, var.namespace)
   description                    = "Lambda ${var.release.name}@${var.release.source.version} - ${local.system_name}"
-  role                           = try(aws_iam_role.lambda_function[0].arn, aws_iam_role.default_lambda_function.arn)
+  role                           = try(var.lambda.iam.enabled, false) ? aws_iam_role.lambda_function[0].arn : aws_iam_role.default_lambda_function[0].arn
   handler                        = var.lambda.handler
   runtime                        = var.lambda.runtime
   s3_bucket                      = var.versions_bucket
