@@ -19,7 +19,9 @@ data "aws_iam_policy_document" "assume_role" {
 }
 
 resource "aws_iam_role" "default_lambda_function" {
+  count              = try(var.lambda.iam.enabled, false) ? 0 : 1
   name               = "${var.release.name}-${var.namespace}-default-role"
+  path               = "/${lower(var.org.organization_name)}-${lower(var.org.organization_unit)}/"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 
   tags = merge({
@@ -65,6 +67,7 @@ resource "aws_iam_policy" "lambda_function_logs" {
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_function_logs" {
-  role       = aws_iam_role.default_lambda_function.name
+  count      = try(var.lambda.iam.enabled, false) ? 0 : 1
+  role       = aws_iam_role.default_lambda_function[0].name
   policy_arn = aws_iam_policy.lambda_function_logs.arn
 }
