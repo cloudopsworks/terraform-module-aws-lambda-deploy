@@ -75,6 +75,15 @@ resource "aws_lambda_event_source_mapping" "lambda_sqs_trigger" {
   tags = local.all_tags
 }
 
+resource "aws_lambda_permission" "allow_sqs" {
+  count         = try(var.lambda.triggers.sqs.queueName, "") != "" ? 1 : 0
+  statement_id  = "AllowExecutionFromSQS"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda_function.function_name
+  principal     = "sqs.amazonaws.com"
+  source_arn    = data.aws_sqs_queue.notification[0].arn
+}
+
 #
 # DynamoDB
 #
@@ -107,4 +116,13 @@ resource "aws_lambda_event_source_mapping" "lambda_dynamodb_trigger" {
     }
   }
   tags = local.all_tags
+}
+
+resource "aws_lambda_permission" "allow_dynamodb" {
+  count         = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
+  statement_id  = "AllowExecutionFromDynamoDB"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda_function.function_name
+  principal     = "dynamodb.amazonaws.com"
+  source_arn    = data.aws_dynamodb_table.notification[0].arn
 }
