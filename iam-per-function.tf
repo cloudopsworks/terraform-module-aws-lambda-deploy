@@ -37,11 +37,12 @@ data "aws_iam_policy_document" "lambda_trigger_sqs" {
   statement {
     effect = "Allow"
     actions = [
-      "sqs:SendMessage",
-      "sqs:ReceiveMessage",
+      "sqs:ChangeMessageVisibility",
       "sqs:DeleteMessage",
+      "sqs:DeleteMessageBatch",
       "sqs:GetQueueAttributes",
-      "sqs:GetQueueUrl"
+      "sqs:GetQueueUrl",
+      "sqs:ReceiveMessage",
     ]
     resources = [
       data.aws_sqs_queue.notification[0].arn
@@ -54,10 +55,9 @@ data "aws_iam_policy_document" "lambda_trigger_s3" {
   statement {
     effect = "Allow"
     actions = [
-      "s3:GetObject",
-      "s3:PutObject",
       "s3:DeleteObject",
-      "s3:ListBucket"
+      "s3:GetObject",
+      "s3:ListBucket",
     ]
     resources = [
       "${data.aws_s3_bucket.notification[0].arn}/*",
@@ -71,10 +71,16 @@ data "aws_iam_policy_document" "lambda_trigger_dynamodb" {
   statement {
     effect = "Allow"
     actions = [
+      "dynamodb:BatchGetItem",
+      "dynamodb:ConditionCheckItem",
       "dynamodb:DescribeStream",
+      "dynamodb:GetItem",
       "dynamodb:GetRecords",
       "dynamodb:GetShardIterator",
-      "dynamodb:ListStreams"
+      "dynamodb:ListStreams",
+      "dynamodb:PartiQLSelect",
+      "dynamodb:Query",
+      "dynamodb:Scan",
     ]
     resources = [
       data.aws_dynamodb_table.notification[0].arn
