@@ -32,6 +32,56 @@ resource "aws_iam_role" "lambda_function" {
   }
 }
 
+data "aws_iam_policy_document" "lambda_trigger_sqs" {
+  count = try(var.lambda.iam.enabled, false) && try(var.lambda.triggers.sqs.queueName, "") != "" ? 1 : 0
+  statement {
+    effect = "Allow"
+    actions = [
+      "sqs:SendMessage",
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+      "sqs:GetQueueUrl"
+    ]
+    resources = [
+      data.aws_sqs_queue.notification[0].arn
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "lambda_trigger_s3" {
+  count = try(var.lambda.iam.enabled, false) && try(var.lambda.triggers.s3.bucketName, "") != "" ? 1 : 0
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket"
+    ]
+    resources = [
+      "${data.aws_s3_bucket.notification[0].arn}/*",
+      data.aws_s3_bucket.notification[0].arn
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "lambda_trigger_dynamodb" {
+  count = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
+  statement {
+    effect = "Allow"
+    actions = [
+      "dynamodb:DescribeStream",
+      "dynamodb:GetRecords",
+      "dynamodb:GetShardIterator",
+      "dynamodb:ListStreams"
+    ]
+    resources = [
+      data.aws_dynamodb_table.notification[0].arn
+    ]
+  }
+}
+
 resource "aws_iam_role_policy_attachment" "lambda_function" {
   count      = try(var.lambda.iam.enabled, false) ? length(try(var.lambda.iam.policy_attachments, [])) : 0
   role       = aws_iam_role.lambda_function[0].name
@@ -50,6 +100,24 @@ resource "aws_iam_role_policy" "lambda_function_custom" {
   name   = "${var.release.name}-${var.namespace}-custom-role-policy"
   role   = aws_iam_role.lambda_function[0].name
   policy = data.aws_iam_policy_document.lambda_function[0].json
+}
+
+resource "aws_iam_role_policy" "lambda_function_trigger_sqs" {
+  count  = try(var.lambda.iam.enabled, false) && try(var.lambda.triggers.sqs.queueName, "") != "" ? 1 : 0
+  role   = aws_iam_role.lambda_function[0].name
+  policy = data.aws_iam_policy_document.lambda_trigger_sqs[0].json
+}
+
+resource "aws_iam_role_policy" "lambda_function_trigger_s3" {
+  count  = try(var.lambda.iam.enabled, false) && try(var.lambda.triggers.sqs.bucketName, "") != "" ? 1 : 0
+  role   = aws_iam_role.lambda_function[0].name
+  policy = data.aws_iam_policy_document.lambda_trigger_s3[0].json
+}
+
+resource "aws_iam_role_policy" "lambda_function_trigger_dybamodb" {
+  count  = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
+  role   = aws_iam_role.lambda_function[0].name
+  policy = data.aws_iam_policy_document.lambda_trigger_dynamodb[0].json
 }
 
 resource "aws_iam_role_policy" "lambda_function_ec2" {
