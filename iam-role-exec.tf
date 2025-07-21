@@ -14,7 +14,7 @@ data "aws_iam_policy_document" "lambda_assume_role" {
       type = "Service"
       identifiers = concat(
         try(var.lambda.iam.execRole.principals, ["lambda.amazonaws.com"]),
-        try(var.lambda.schedule.enabled, false) ? ["scheduler.amazonaws.com"] : []
+        try(var.lambda.schedule.enabled, false) && length(try(var.lambda.schedule.multiple, [])) > 0 ? ["scheduler.amazonaws.com"] : []
       )
     }
   }
