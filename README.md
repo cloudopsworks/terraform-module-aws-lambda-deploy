@@ -100,6 +100,224 @@ module "lambda" {
 }
 ```
 
+#### Configuration Parameters
+```yaml
+lambda:
+  arch: x86_64 | arm64
+  iam: {}
+  #  enabled: true
+  #  execRole:
+  #    enabled: true
+  #    principals:
+  #      - lambda.amazonaws.com
+  #      - apigateway.amazonaws.com
+  #  policy_attachments:
+  #    - arn: arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+  #  statements:
+  #    - effect: Allow # Uncomment below to if vpc.enabled = true
+  #      action:
+  #        - ec2:CreateNetworkInterface
+  #        - ec2:DescribeNetworkInterfaces
+  #        - ec2:DeleteNetworkInterface
+  #        - ec2:AssignPrivateIpAddresses
+  #        - ec2:UnassignPrivateIpAddresses
+  #      resource:
+  #        - "*"
+  #    - effect: Allow # Uncomment below to if vpc.enabled = true
+  #      action:
+  #        - ec2:DescribeSecurityGroups
+  #        - ec2:DescribeSubnets
+  #        - ec2:DescribeVpcs
+  #      resource:
+  #        - "*"
+  #    - effect: Allow
+  #      action:
+  #        - s3:PutObject
+  #        - s3:GetObject
+  #        - s3:DeleteObject
+  #        - s3:ListBucket
+  #      resource:
+  #        - arn:aws:s3:::<bucket-name>
+  #        - arn:aws:s3:::<bucket-name>/*
+  #    - effect: Allow
+  #      action:
+  #        - s3:ListAllMyBuckets
+  #      resource:
+  #        - "*"
+  #    - effect: Allow
+  #      action:
+  #        - dynamodb:PutItem
+  #        - dynamodb:GetItem
+  #        - dynamodb:DeleteItem
+  #        - dynamodb:UpdateItem
+  #        - dynamodb:Scan
+  #        - dynamodb:Query
+  #      resource:
+  #        - arn:aws:dynamodb:<region>:123456789012:table/<dynamodb-table>
+  #        - arn:aws:dynamodb:<region>:123456789012:table/<dynamodb-table>/*
+  #    - effect: Allow
+  #      action:
+  #        - dynamodb:ListTables
+  #      resource:
+  #        - "*"
+  environment:
+    variables:
+      - name: key
+        value: value
+  handler: index.handler
+  runtime: java21
+  #memory_size: 128
+  #reserved_concurrency: -1
+  #timeout: 3
+  # Provisioned concurrency enables if uncomment and set > 1
+  #provisioned_concurrent_executions: 1
+
+  ##
+  # Optional: if you want to create an alias for the Lambda function
+  #alias:
+  #  enabled: true
+  #  name: "prod" # prod | uat | dev | demo
+  #  routing_config:
+  #    - version: "1" # Version of the Lambda function
+  #      weight: 1.0 # Weight for the routing, can be between 0.0 and 1.0
+
+  ##
+  # Optionals: function Urls
+  functionUrls: []
+  #  - id: prod
+  #    qualifier: "prod"
+  #    authorizationType: "AWS_IAM"
+  #    cors:
+  #      allowCredentials: true
+  #      allowMethods:
+  #        - "GET"
+  #        - "POST"
+  #      allowOrigins:
+  #        - "*"
+  #      allowHeaders:
+  #        - "date"
+  #        - "keep-alive"
+  #      exposeHeaders:
+  #        - "date"
+  #        - "keep-alive"
+  #      maxAge: 86400
+  #  - id: "dev"
+  #    authorizationType: "NONE"
+  ##
+  # Optionals: event bridge scheduling
+  #            Remove comment on items to enable
+  schedule:
+    enabled: false                      # (optional) Enable or disable singe schedule
+    schedule_group: "my-schedule-group" # (optional) Schedule group name, schedule group must already exists
+    flexible:                     # (optional) Flexible scheduling, can be used to create a flexible schedule for the Lambda function, only available if schedule.enabled is true
+      enabled: true
+      maxWindow: 20               # Minutes
+    expression: "rate(1 hour)"    # (optional) Schedule expression, can be cron or rate, required if enabled is true
+    timezone: "UTC-3"             # (optional) Timezone for the schedule, defaults to UTC
+    suspended: false              # (optional) Whether the schedule is suspended, defaults to false
+    payload: {} | ""              # (optional) Payload to send to the Lambda function, can be YAML (will be converted to JSON), JSON or string, defaults to null
+    multiple:              # (optional) Multiple schedules, can be used to create multiple schedules for the same Lambda function, only available if schedule.enabled is false
+      - expression: "rate(1 hour)"    # (required) Schedule expression, can be cron or rate, required if enabled is true
+        flexible:                     # (optional) Flexible scheduling, can be used to create a flexible schedule for the Lambda function, only available if schedule.enabled is true
+          enabled: true
+          maxWindow: 20               # Minutes
+        timezone: "UTC-3"             # (optional) Timezone for the schedule, defaults to UTC
+        suspended: false              # (optional) Whether the schedule is suspended, defaults to false
+        payload: {} | ""              # (optional) Payload to send to the Lambda function, can be YAML (will be converted to JSON), JSON or string, defaults to null
+      - expression: "0 10 * * *"      # (required) Schedule expression, can be cron or rate, required if enabled is true
+        flexible:                     # (optional) Flexible scheduling, can be used to create a flexible schedule for the Lambda function, only available if schedule.enabled is true
+          enabled: true
+          maxWindow: 20 # Minutes
+        timezone: "UTC-3"             # (optional) Timezone for the schedule, defaults to UTC
+        suspended: false              # (optional) Whether the schedule is suspended, defaults to false
+        payload: {} | ""              # (optional) Payload to send to the Lambda function, can be YAML (will be converted to JSON), JSON or string, defaults to null
+
+  ##
+  # VPC configuration for the Lambda function
+  vpc:
+    enabled: false
+    create_security_group: false
+    security_groups: []
+    #  - sg-1234567890abcdef0
+    #  - sg-1234567890abcdef1
+    subnets: []
+    #  - subnet-1234567890abcdef0
+
+  ##
+  # Optional: logging config
+  #logging:
+  #  application_log_level: "INFO"
+  #  log_format: JSON | Text
+  #  system_log_level: INFO | DEBUG | ERROR
+
+  ##
+  # Optional: Xray tracing enable
+  tracing: {}
+  #  enabled: true
+  #  mode: Active | PassThrough
+
+  ##
+  # Optional: Change default lambda ephemeral storage
+  #ephemeral_storage:
+  #  enabled: true
+  #  size: 1024 # Default is 512
+
+  ##
+  # Optional: EFS configuration
+  #efs:
+  #  enabled: true
+  #  arn: arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-12345678
+  #  local_mount_path: /mnt/efs
+  
+  ##
+  # Optional: triggers notifications for the lambda function.
+  triggers: {}
+  #  s3:
+  #    bucketName: BUCKET_NAME
+  #    events:
+  #      - s3:ObjectCreated:*
+  #    filterPrefix: "OtherLogs/"
+  #    filterSuffix: ".log"
+  #  sqs:
+  #    queueName: SQS_QUEUE_NAME
+  #    batchSize: 10 # Optional: Maximum number of items to retrieve in a single batch, defaults to 10
+  #    maximumConcurrency: 2 # Optional: Maximum number of concurrent messages to process
+  #    metricsConfig: true # Optional: Enable metrics for the DynamoDB stream, defaults to false
+  #    filterCriteria:
+  #      body:
+  #        Temperature:
+  #          - numeric:
+  #              - ">"
+  #              - 0
+  #              - "<="
+  #              - 100
+  #        Location:
+  #          - New York
+  #  dynamodb:
+  #    tableName: DYNAMODB_TABLE_NAME
+  #    startingPosition: LATEST | TRIM_HORIZON # Optional: Starting position for the stream, defaults to LATEST
+  #    batchSize: 100 # Optional: Maximum number of records to retrieve in a single batch, defaults to 100
+  #    maximumRetryAttempts: 3 # Optional: Maximum number of retry attempts for failed records, defaults to -1
+  #    metricsConfig: true # Optional: Enable metrics for the DynamoDB stream, defaults to false
+  #    filterCriteria:
+  #      body:
+  #        Temperature:
+  #          - numeric:
+  #              - ">"
+  #              - 0
+  #              - "<="
+  #              - 100
+  #        Location:
+  #          - New York
+
+  ## Lambda Layers
+  layers: []
+  #  - arn: arn:aws:lambda:us-east-1:123456789012:layer:my-layer:1
+  #  - arn: arn:aws:lambda:us-east-1:123456789012:layer:my-layer:2
+  #  - arn: arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-java-agent-amd64-ver-1-32-0:4
+    
+```
+
 ## Quick Start
 
 1. Prepare your Lambda function code and package it as a ZIP file
@@ -182,6 +400,7 @@ Available targets:
 | Name | Version |
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.3 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
 
 ## Providers
 
@@ -209,25 +428,36 @@ Available targets:
 | [aws_iam_role_policy.lambda_function_custom](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.lambda_function_ec2](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.lambda_function_log](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.lambda_function_trigger_dybamodb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.lambda_function_trigger_s3](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.lambda_function_trigger_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy_attachment.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.lambda_function_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_lambda_alias.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_alias) | resource |
-| [aws_lambda_event_source_mapping.lambda_test_sqs_trigger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_event_source_mapping) | resource |
+| [aws_lambda_event_source_mapping.lambda_dynamodb_trigger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_event_source_mapping) | resource |
+| [aws_lambda_event_source_mapping.lambda_sqs_trigger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_event_source_mapping) | resource |
 | [aws_lambda_function.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function) | resource |
 | [aws_lambda_function_url.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function_url) | resource |
 | [aws_lambda_permission.allow_bucket](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
+| [aws_lambda_permission.allow_dynamodb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
+| [aws_lambda_permission.allow_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
 | [aws_lambda_provisioned_concurrency_config.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_provisioned_concurrency_config) | resource |
 | [aws_s3_bucket_notification.bucket_notification](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_notification) | resource |
 | [aws_scheduler_schedule.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/scheduler_schedule) | resource |
+| [aws_scheduler_schedule.multiple_schedule](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/scheduler_schedule) | resource |
 | [aws_scheduler_schedule_group.environ](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/scheduler_schedule_group) | resource |
 | [aws_security_group.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
+| [aws_dynamodb_table.notification](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/dynamodb_table) | data source |
 | [aws_iam_policy_document.assume_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_assume_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_exec](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_exec_ec2](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_function_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.lambda_trigger_dynamodb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.lambda_trigger_s3](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.lambda_trigger_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
 | [aws_s3_bucket.notification](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/s3_bucket) | data source |
 | [aws_sqs_queue.notification](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/sqs_queue) | data source |
@@ -257,8 +487,6 @@ Available targets:
 | <a name="output_function_arn"></a> [function\_arn](#output\_function\_arn) | n/a |
 | <a name="output_function_invoke_arn"></a> [function\_invoke\_arn](#output\_function\_invoke\_arn) | n/a |
 | <a name="output_function_name"></a> [function\_name](#output\_function\_name) | n/a |
-| <a name="output_lambda_default_role"></a> [lambda\_default\_role](#output\_lambda\_default\_role) | n/a |
-| <a name="output_lambda_default_role_arn"></a> [lambda\_default\_role\_arn](#output\_lambda\_default\_role\_arn) | n/a |
 | <a name="output_lambda_exec_role"></a> [lambda\_exec\_role](#output\_lambda\_exec\_role) | n/a |
 | <a name="output_lambda_exec_role_arn"></a> [lambda\_exec\_role\_arn](#output\_lambda\_exec\_role\_arn) | n/a |
 | <a name="output_lambda_function_role"></a> [lambda\_function\_role](#output\_lambda\_function\_role) | n/a |
