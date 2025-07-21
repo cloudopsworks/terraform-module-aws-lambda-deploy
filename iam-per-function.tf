@@ -1,7 +1,10 @@
 ##
-# (c) 2022-2024 - Cloud Ops Works LLC - https://cloudops.works/
-#            On GitHub: https://github.com/cloudopsworks
-#            Distributed Under Apache v2.0 License
+# (c) 2021-2025
+#     Cloud Ops Works LLC - https://cloudops.works/
+#     Find us on:
+#       GitHub: https://github.com/cloudopsworks
+#       WebSite: https://cloudops.works
+#     Distributed Under Apache v2.0 License
 #
 data "aws_iam_policy_document" "lambda_function" {
   count = try(var.lambda.iam.enabled, false) && length(try(var.lambda.iam.statements, [])) > 0 ? 1 : 0
