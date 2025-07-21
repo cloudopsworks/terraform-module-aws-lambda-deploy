@@ -5,7 +5,7 @@
 #
 
 resource "aws_scheduler_schedule_group" "environ" {
-  count = try(var.lambda.schedule.enabled, false) && try(var.lambda.schedule.schedule_group, "") == "" ? 1 : 0
+  count = (try(var.lambda.schedule.enabled, false) || length(try(var.lambda.schedule.multiple, [])) > 0) && try(var.lambda.schedule.schedule_group, "") == "" ? 1 : 0
   name  = format("sched-grp-%s-%s", var.release.name, var.namespace)
 
   tags = merge({
