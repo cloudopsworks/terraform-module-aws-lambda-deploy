@@ -12,6 +12,18 @@ locals {
     Namespace   = var.namespace
     Release     = var.release.name
   })
+  default_role_suffix  = "-${var.namespace}-default-role"
+  default_role_length  = length(local.default_role_suffix)
+  default_role_name    = format("%s%s", substr(var.release.name, 0, 64 - local.default_role_length), local.default_role_suffix)
+  logs_policy_suffix   = "-${var.namespace}-logs-policy"
+  logs_policy_length   = length(local.logs_policy_suffix)
+  logs_policy_name     = format("%s%s", substr(var.release.name, 0, 64 - local.logs_policy_length), local.logs_policy_suffix)
+  function_role_suffix = "-${var.namespace}-lambda-role"
+  function_role_length = length(local.function_role_suffix)
+  function_role_name   = format("%s%s", substr(var.release.name, 0, 64 - local.function_role_length), local.function_role_suffix)
+  exec_role_suffix     = "-${var.namespace}-exec-role"
+  exec_role_length     = length(local.exec_role_suffix)
+  exec_role_name       = format("%s%s", substr(var.release.name, 0, 64 - local.exec_role_length), local.exec_role_suffix)
 }
 
 resource "aws_lambda_function" "lambda_function" {

@@ -20,7 +20,7 @@ data "aws_iam_policy_document" "lambda_function" {
 
 resource "aws_iam_role" "lambda_function" {
   count              = try(var.lambda.iam.enabled, false) ? 1 : 0
-  name               = "${var.release.name}-${var.namespace}-lambda-role"
+  name               = local.function_role_name
   path               = "/${lower(var.org.organization_name)}-${lower(var.org.organization_unit)}/"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 
