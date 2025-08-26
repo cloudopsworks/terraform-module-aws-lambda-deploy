@@ -40,7 +40,7 @@ data "aws_iam_policy_document" "lambda_exec" {
 
 resource "aws_iam_role" "lambda_exec" {
   count              = try(var.lambda.iam.execRole.enabled, false) ? 1 : 0
-  name               = "${var.release.name}-${var.namespace}-exec-role"
+  name               = local.exec_role_name
   path               = "/${lower(var.org.organization_name)}-${lower(var.org.organization_unit)}/"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role[0].json
   tags = merge({

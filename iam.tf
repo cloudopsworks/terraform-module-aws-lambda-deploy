@@ -23,7 +23,7 @@ data "aws_iam_policy_document" "assume_role" {
 
 resource "aws_iam_role" "default_lambda_function" {
   count              = try(var.lambda.iam.enabled, false) ? 0 : 1
-  name               = "${var.release.name}-${var.namespace}-default-role"
+  name               = local.default_role_name
   path               = "/${lower(var.org.organization_name)}-${lower(var.org.organization_unit)}/"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 
@@ -54,7 +54,7 @@ data "aws_iam_policy_document" "lambda_function_logs" {
 
 
 resource "aws_iam_policy" "lambda_function_logs" {
-  name        = "${var.release.name}-${var.namespace}-logs-policy"
+  name        = local.logs_policy_name
   path        = "/"
   description = "IAM policy for logging from a lambda"
   policy      = data.aws_iam_policy_document.lambda_function_logs.json
