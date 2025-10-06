@@ -16,7 +16,7 @@ resource "aws_security_group" "this" {
   count  = try(var.lambda.vpc.create_security_group, false) && try(var.lambda.vpc.enabled, false) ? 1 : 0
   name   = "${var.release.name}-${var.namespace}-sg"
   vpc_id = data.aws_subnet.lambda_sub[0].vpc_id
-  tags   = merge(local.release_tags, local.all_tags, {
+  tags = merge(local.release_tags, local.all_tags, {
     "Name" = "${var.release.name}-${var.namespace}-sg"
   })
 }
