@@ -111,10 +111,13 @@ resource "aws_lambda_event_source_mapping" "lambda_dynamodb_trigger" {
   }
 
   dynamic "filter_criteria" {
-    for_each = length(try(var.lambda.triggers.dynamodb.filterCriteria, {})) > 0 ? [1] : []
+    for_each = length(try(var.lambda.triggers.dynamodb.filterCriteria, [])) > 0 ? [1] : []
     content {
-      filter {
-        pattern = type(var.lambda.triggers.dynamodb.filterCriteria) == "string" ? var.lambda.triggers.dynamodb.filterCriteria : jsonencode(var.lambda.triggers.dynamodb.filterCriteria)
+      dynamic "filter" {
+        for_each = var.lambda.triggers.dynamodb.filterCriteria
+        content {
+          pattern = try(filter.value.pattern, jsonencode(filter.value.pattern_object))
+        }
       }
     }
   }
