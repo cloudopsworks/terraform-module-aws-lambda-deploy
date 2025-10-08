@@ -68,10 +68,13 @@ resource "aws_lambda_event_source_mapping" "lambda_sqs_trigger" {
   }
 
   dynamic "filter_criteria" {
-    for_each = length(try(var.lambda.triggers.sqs.filterCriteria, {})) > 0 ? [1] : []
+    for_each = length(try(var.lambda.triggers.sqs.filterCriteria, [])) > 0 ? [1] : []
     content {
-      filter {
-        pattern = jsonencode(var.lambda.triggers.sqs.filterCriteria)
+      dynamic "filter" {
+        for_each = var.lambda.triggers.sqs.filterCriteria
+        content {
+          pattern = try(filter.value.pattern, jsonencode(filter.value.pattern_object))
+        }
       }
     }
   }
