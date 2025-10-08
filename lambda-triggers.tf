@@ -97,7 +97,7 @@ data "aws_dynamodb_table" "notification" {
 
 resource "aws_lambda_event_source_mapping" "lambda_dynamodb_trigger" {
   count                  = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
-  event_source_arn       = data.aws_dynamodb_table.notification[0].arn
+  event_source_arn       = data.aws_dynamodb_table.notification[0].stream_arn
   function_name          = aws_lambda_function.lambda_function.arn
   starting_position      = try(var.lambda.triggers.dynamodb.startingPosition, "LATEST")
   batch_size             = try(var.lambda.triggers.dynamodb.batchSize, null)
