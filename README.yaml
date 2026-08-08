@@ -1,5 +1,12 @@
 name: Terraform AWS Lambda Deployment Module
-#logo: logo/logo.jpg
+
+badges:
+  - name: Latest Release
+    image: https://img.shields.io/github/release/cloudopsworks/terraform-module-aws-lambda-deploy.svg?style=for-the-badge
+    url: https://github.com/cloudopsworks/terraform-module-aws-lambda-deploy/releases/latest
+  - name: Last Updated
+    image: https://img.shields.io/github/last-commit/cloudopsworks/terraform-module-aws-lambda-deploy.svg?style=for-the-badge
+    url: https://github.com/cloudopsworks/terraform-module-aws-lambda-deploy/commits
 
 license: "APACHE2"
 
@@ -11,281 +18,90 @@ copyrights:
 github_repo: cloudopsworks/terraform-module-aws-lambda-deploy
 
 description: |-
-  Terraform module for deploying AWS Lambda functions. This module supports various configurations 
-  including environment variables, VPC settings, and IAM roles. It also allows for the deployment of 
-  Lambda layers and integrates with AWS CloudWatch for logging and monitoring.
+  Terraform module that deploys an AWS Lambda function from a packaged artifact stored in S3, together with
+  everything it needs to run: IAM roles and policies, a CloudWatch log group, optional VPC and EFS attachment,
+  Function URLs, aliases, EventBridge schedules, and S3/SQS/DynamoDB event source triggers. The module is driven
+  by a single structured `lambda` variable and is designed to be consumed through Terragrunt within the
+  CloudOps Works hub-and-spoke landing zone.
 
 # Introduction to the project
 introduction: |-
-  The AWS Lambda Deployment Module is a comprehensive Terraform solution for deploying and managing AWS Lambda functions. 
-  Key features include:
-  - Flexible configuration of Lambda function settings including memory, timeout, and concurrency
-  - VPC integration with optional security group creation
-  - Support for Lambda layers and environment variables
-  - CloudWatch logging integration
-  - EFS integration capabilities
-  - Lambda URL endpoints with CORS support
-  - Alias management and provisioned concurrency configuration
+  The AWS Lambda Deployment Module is a comprehensive Terraform solution for deploying and managing AWS Lambda
+  functions from CI/CD pipelines. The deployment package is read from an S3 versions bucket, and every resource is
+  named consistently from the release name, the namespace, and the organization/environment coordinates supplied by
+  the Terragrunt hierarchy.
+
+  Key capabilities:
+
+  | Capability | Description |
+  |------------|-------------|
+  | Function deployment | Deploys a `Zip` package from S3, publishes a new version on every apply, and renders the release version into the function description. |
+  | Runtime tuning | Memory, timeout, reserved concurrency, provisioned concurrency, and ephemeral `/tmp` storage. |
+  | IAM | A default execution role with CloudWatch Logs access, or a dedicated function role with managed policy attachments and inline statements. An optional separate invoker role grants `lambda:InvokeFunction` to other services. |
+  | Networking | Optional VPC attachment with either existing security groups or a module-managed security group. Required `ec2:*` ENI permissions are attached automatically. |
+  | Storage | Optional Amazon EFS access point mount. |
+  | Logging | A dedicated CloudWatch log group with configurable retention, plus JSON/Text log format and per-level application and system log controls. |
+  | Observability | Optional AWS X-Ray tracing in `Active` or `PassThrough` mode. |
+  | Invocation | Lambda Function URLs with full CORS control, and aliases with weighted routing between versions. |
+  | Scheduling | One or many EventBridge Scheduler schedules, with flexible time windows, timezones, and custom payloads. |
+  | Event triggers | S3 bucket notifications, SQS event source mappings, and DynamoDB Streams mappings — each with filter criteria, and with the matching IAM permissions attached automatically. |
+  | Layers | Attach any number of Lambda layer versions. |
 
 # How to use this project
 usage: |-
-  To use this module, include it in your Terraform configuration:
+  This module is consumed through Terragrunt. Use the built-in `scaffold` command to bootstrap a new deployment
+  directory — it reads `.boilerplate/boilerplate.yml` from this repository and generates `terragrunt.hcl`,
+  `inputs.yaml`, and `local-tags.json` for you.
+
+  #### 1. Scaffold the deployment
+
+  ```sh
+  # 1. Create and enter the target deployment directory
+  mkdir -p <environment>/<region>/<spoke>/lambda-my-function
+  cd <environment>/<region>/<spoke>/lambda-my-function
+
+  # 2. Scaffold the module (do NOT use --working-dir)
+  terragrunt scaffold github.com/cloudopsworks/terraform-module-aws-lambda-deploy
+
+  # 3. Edit inputs.yaml with deployment-specific values
+  #    (all keys and comments are pre-populated from .boilerplate/inputs.yaml)
+  vi inputs.yaml
+
+  # 4. Apply
+  terragrunt apply
+  ```
+
+  #### 2. Generated `terragrunt.hcl`
+
+  Scaffold produces the file below. It loads `inputs.yaml` as `local.local_vars` and merges the tag files from every
+  level of the hierarchy. `is_hub`, `org`, `spoke_def`, and `extra_tags` come from the hierarchy — never from
+  `inputs.yaml`.
 
   ```hcl
-  module "lambda" {
-    source = "github.com/cloudopsworks/terraform-module-aws-lambda-deploy"
+  locals {
+    local_vars  = yamldecode(file("./inputs.yaml"))
+    spoke_vars  = yamldecode(file(find_in_parent_folders("spoke-inputs.yaml")))
+    region_vars = yamldecode(file(find_in_parent_folders("region-inputs.yaml")))
+    env_vars    = yamldecode(file(find_in_parent_folders("env-inputs.yaml")))
+    global_vars = yamldecode(file(find_in_parent_folders("global-inputs.yaml")))
 
-    namespace        = "dev"
-    versions_bucket  = "my-lambda-bucket"
-    bucket_path     = "function.zip"
+    local_tags  = jsondecode(file("./local-tags.json"))
+    spoke_tags  = jsondecode(file(find_in_parent_folders("spoke-tags.json")))
+    region_tags = jsondecode(file(find_in_parent_folders("region-tags.json")))
+    env_tags    = jsondecode(file(find_in_parent_folders("env-tags.json")))
+    global_tags = jsondecode(file(find_in_parent_folders("global-tags.json")))
 
-    release = {
-      name = "my-function"
-      source = {
-        version = "1.0.0"
-      }
-    }
-
-    lambda = {
-      handler  = "index.handler"
-      runtime  = "nodejs18.x"
-      timeout  = 30
-      memory_size = 256
-      environment = {
-        variables = [
-          { name = "ENV", value = "development" }
-        ]
-      }
-    }
+    tags = merge(
+      local.global_tags,
+      local.env_tags,
+      local.region_tags,
+      local.spoke_tags,
+      local.local_tags
+    )
   }
-  ```
-  
-  #### Configuration Parameters
-  ```yaml
-  lambda:
-    arch: x86_64 | arm64
-    iam: {}
-    #  enabled: true
-    #  execRole:
-    #    enabled: true
-    #    principals:
-    #      - lambda.amazonaws.com
-    #      - apigateway.amazonaws.com
-    #  policy_attachments:
-    #    - arn: arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
-    #  statements:
-    #    - effect: Allow # Uncomment below to if vpc.enabled = true
-    #      action:
-    #        - ec2:CreateNetworkInterface
-    #        - ec2:DescribeNetworkInterfaces
-    #        - ec2:DeleteNetworkInterface
-    #        - ec2:AssignPrivateIpAddresses
-    #        - ec2:UnassignPrivateIpAddresses
-    #      resource:
-    #        - "*"
-    #    - effect: Allow # Uncomment below to if vpc.enabled = true
-    #      action:
-    #        - ec2:DescribeSecurityGroups
-    #        - ec2:DescribeSubnets
-    #        - ec2:DescribeVpcs
-    #      resource:
-    #        - "*"
-    #    - effect: Allow
-    #      action:
-    #        - s3:PutObject
-    #        - s3:GetObject
-    #        - s3:DeleteObject
-    #        - s3:ListBucket
-    #      resource:
-    #        - arn:aws:s3:::<bucket-name>
-    #        - arn:aws:s3:::<bucket-name>/*
-    #    - effect: Allow
-    #      action:
-    #        - s3:ListAllMyBuckets
-    #      resource:
-    #        - "*"
-    #    - effect: Allow
-    #      action:
-    #        - dynamodb:PutItem
-    #        - dynamodb:GetItem
-    #        - dynamodb:DeleteItem
-    #        - dynamodb:UpdateItem
-    #        - dynamodb:Scan
-    #        - dynamodb:Query
-    #      resource:
-    #        - arn:aws:dynamodb:<region>:123456789012:table/<dynamodb-table>
-    #        - arn:aws:dynamodb:<region>:123456789012:table/<dynamodb-table>/*
-    #    - effect: Allow
-    #      action:
-    #        - dynamodb:ListTables
-    #      resource:
-    #        - "*"
-    environment:
-      variables:
-        - name: key
-          value: value
-    handler: index.handler
-    runtime: java21
-    #memory_size: 128
-    #reserved_concurrency: -1
-    #timeout: 3
-    # Provisioned concurrency enables if uncomment and set > 1
-    #provisioned_concurrent_executions: 1
-  
-    ##
-    # Optional: if you want to create an alias for the Lambda function
-    #alias:
-    #  enabled: true
-    #  name: "prod" # prod | uat | dev | demo
-    #  routing_config:
-    #    - version: "1" # Version of the Lambda function
-    #      weight: 1.0 # Weight for the routing, can be between 0.0 and 1.0
-  
-    ##
-    # Optionals: function Urls
-    functionUrls: []
-    #  - id: prod
-    #    qualifier: "prod"
-    #    authorizationType: "AWS_IAM"
-    #    cors:
-    #      allowCredentials: true
-    #      allowMethods:
-    #        - "GET"
-    #        - "POST"
-    #      allowOrigins:
-    #        - "*"
-    #      allowHeaders:
-    #        - "date"
-    #        - "keep-alive"
-    #      exposeHeaders:
-    #        - "date"
-    #        - "keep-alive"
-    #      maxAge: 86400
-    #  - id: "dev"
-    #    authorizationType: "NONE"
-    ##
-    # Optionals: event bridge scheduling
-    #            Remove comment on items to enable
-    schedule:
-      enabled: false                      # (optional) Enable or disable singe schedule
-      schedule_group: "my-schedule-group" # (optional) Schedule group name, schedule group must already exists
-      flexible:                     # (optional) Flexible scheduling, can be used to create a flexible schedule for the Lambda function, only available if schedule.enabled is true
-        enabled: true
-        maxWindow: 20               # Minutes
-      expression: "rate(1 hour)"    # (optional) Schedule expression, can be cron or rate, required if enabled is true
-      timezone: "UTC-3"             # (optional) Timezone for the schedule, defaults to UTC
-      suspended: false              # (optional) Whether the schedule is suspended, defaults to false
-      payload: {} | ""              # (optional) Payload to send to the Lambda function, can be YAML (will be converted to JSON), JSON or string, defaults to null
-      multiple:              # (optional) Multiple schedules, can be used to create multiple schedules for the same Lambda function, only available if schedule.enabled is false
-        - expression: "rate(1 hour)"    # (required) Schedule expression, can be cron or rate, required if enabled is true
-          flexible:                     # (optional) Flexible scheduling, can be used to create a flexible schedule for the Lambda function, only available if schedule.enabled is true
-            enabled: true
-            maxWindow: 20               # Minutes
-          timezone: "UTC-3"             # (optional) Timezone for the schedule, defaults to UTC
-          suspended: false              # (optional) Whether the schedule is suspended, defaults to false
-          payload: {} | ""              # (optional) Payload to send to the Lambda function, can be YAML (will be converted to JSON), JSON or string, defaults to null
-        - expression: "0 10 * * *"      # (required) Schedule expression, can be cron or rate, required if enabled is true
-          flexible:                     # (optional) Flexible scheduling, can be used to create a flexible schedule for the Lambda function, only available if schedule.enabled is true
-            enabled: true
-            maxWindow: 20 # Minutes
-          timezone: "UTC-3"             # (optional) Timezone for the schedule, defaults to UTC
-          suspended: false              # (optional) Whether the schedule is suspended, defaults to false
-          payload: {} | ""              # (optional) Payload to send to the Lambda function, can be YAML (will be converted to JSON), JSON or string, defaults to null
-  
-    ##
-    # VPC configuration for the Lambda function
-    vpc:
-      enabled: false
-      create_security_group: false
-      security_groups: []
-      #  - sg-1234567890abcdef0
-      #  - sg-1234567890abcdef1
-      subnets: []
-      #  - subnet-1234567890abcdef0
-  
-    ##
-    # Optional: logging config
-    #logging:
-    #  application_log_level: "INFO"
-    #  log_format: JSON | Text
-    #  system_log_level: INFO | DEBUG | ERROR
-  
-    ##
-    # Optional: Xray tracing enable
-    tracing: {}
-    #  enabled: true
-    #  mode: Active | PassThrough
-  
-    ##
-    # Optional: Change default lambda ephemeral storage
-    #ephemeral_storage:
-    #  enabled: true
-    #  size: 1024 # Default is 512
-  
-    ##
-    # Optional: EFS configuration
-    #efs:
-    #  enabled: true
-    #  arn: arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-12345678
-    #  local_mount_path: /mnt/efs
-    
-    ##
-    # Optional: triggers notifications for the lambda function.
-    triggers: {}
-    #  s3:
-    #    bucketName: BUCKET_NAME
-    #    events:
-    #      - s3:ObjectCreated:*
-    #    filterPrefix: "OtherLogs/"
-    #    filterSuffix: ".log"
-    #  sqs:
-    #    queueName: SQS_QUEUE_NAME
-    #    batchSize: 10 # Optional: Maximum number of items to retrieve in a single batch, defaults to 10
-    #    maximumConcurrency: 2 # Optional: Maximum number of concurrent messages to process
-    #    metricsConfig: true # Optional: Enable metrics for the DynamoDB stream, defaults to false
-    #    filterCriteria:
-    #      body:
-    #        Temperature:
-    #          - numeric:
-    #              - ">"
-    #              - 0
-    #              - "<="
-    #              - 100
-    #        Location:
-    #          - New York
-    #  dynamodb:
-    #    tableName: DYNAMODB_TABLE_NAME
-    #    startingPosition: LATEST | TRIM_HORIZON # Optional: Starting position for the stream, defaults to LATEST
-    #    batchSize: 100 # Optional: Maximum number of records to retrieve in a single batch, defaults to 100
-    #    maximumRetryAttempts: 3 # Optional: Maximum number of retry attempts for failed records, defaults to -1
-    #    metricsConfig: true # Optional: Enable metrics for the DynamoDB stream, defaults to false
-    #    filterCriteria:
-    #      body:
-    #        Temperature:
-    #          - numeric:
-    #              - ">"
-    #              - 0
-    #              - "<="
-    #              - 100
-    #        Location:
-    #          - New York
-  
-    ## Lambda Layers
-    layers: []
-    #  - arn: arn:aws:lambda:us-east-1:123456789012:layer:my-layer:1
-    #  - arn: arn:aws:lambda:us-east-1:123456789012:layer:my-layer:2
-    #  - arn: arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-java-agent-amd64-ver-1-32-0:4
-      
-  ```
 
-# Example usage
-examples: |-
-  Example Terragrunt configuration:
-
-  ```hcl
-  # terragrunt.hcl
   include "root" {
-    path = find_in_parent_folders()
+    path = find_in_parent_folders("root.hcl")
   }
 
   terraform {
@@ -293,53 +109,427 @@ examples: |-
   }
 
   inputs = {
-    namespace = "prod"
-    release = {
-      name = "api-handler"
-      source = {
-        version = "2.1.0"
-      }
-    }
-    lambda = {
-      handler = "api.handler"
-      runtime = "nodejs18.x"
-      vpc = {
-        enabled = true
-        create_security_group = true
-        subnets = ["subnet-123", "subnet-456"]
-      }
-      environment = {
-        variables = [
-          { name = "NODE_ENV", value = "production" },
-          { name = "API_KEY", value = "secret" }
-        ]
-      }
-    }
+    is_hub           = false
+    org              = local.env_vars.org
+    spoke_def        = local.spoke_vars.spoke
+    namespace        = local.local_vars.namespace
+    repository_owner = local.local_vars.repository_owner
+    release          = local.local_vars.release
+    versions_bucket  = local.local_vars.versions_bucket
+    lambda           = try(local.local_vars.lambda, {})
+    absolute_path    = try(local.local_vars.absolute_path, "./")
+    logs_bucket      = try(local.local_vars.logs_bucket, "")
+    bucket_path      = try(local.local_vars.bucket_path, "")
+    extra_tags       = local.tags
   }
+  ```
+
+  #### 3. Generated `inputs.yaml`
+
+  This is the file you edit. Every key below mirrors `.boilerplate/inputs.yaml`.
+
+  ```yaml
+  # (Required) Namespace appended to the Lambda function name and its IAM resources.
+  # The function is named "<release.name>-<namespace>". Example: dev | uat | prod
+  namespace: "dev"
+
+  # (Required) Owner of the source code repository. Usually supplied by the CI/CD
+  # pipeline for traceability; reserved for future use and not referenced by any
+  # resource today. Example: cloudopsworks
+  repository_owner: "cloudopsworks"
+
+  # (Required) Release metadata for the deployed artifact.
+  release:
+    name: "my-function" # (Required) Base name for the function and its IAM roles/policies.
+    source:
+      version: "1.0.0"  # (Required) Artifact version, rendered into the function description.
+
+  # (Required) Name of the S3 bucket holding the packaged application versions.
+  # The module reads the deployment ZIP from this bucket.
+  versions_bucket: "my-artifacts-bucket"
+
+  # (Optional) S3 object key of the deployment package inside versions_bucket.
+  # Default: ""
+  bucket_path: "releases/my-function/1.0.0/function.zip"
+
+  # (Optional) S3 bucket for application logs. Supplied by the CI/CD pipeline;
+  # reserved for future use and not referenced by any resource today. Default: ""
+  logs_bucket: ""
+
+  # (Optional) Absolute path to the Lambda function sources on the runner.
+  # Supplied by the CI/CD pipeline; reserved for future use and not referenced by
+  # any resource today. Default: "./"
+  absolute_path: "./"
+
+  # (Required) AWS Lambda function configuration. Default: {}
+  lambda:
+    handler: "index.handler"   # (Required) Function entrypoint, e.g. "index.handler" (Node.js/Python) or "com.example.App::handleRequest" (Java).
+    runtime: "nodejs22.x"      # (Required) Runtime identifier. Valid values include: nodejs18.x, nodejs20.x, nodejs22.x, python3.10, python3.11, python3.12, python3.13, java17, java21, dotnet8, ruby3.3, provided.al2023.
+    #memory_size: 128          # (Optional) Memory in MB. Valid range 128-10240. Default: 128
+    #timeout: 3                # (Optional) Execution timeout in seconds. Valid range 1-900. Default: 3
+    #reserved_concurrency: -1  # (Optional) Reserved concurrent executions. -1 means unreserved (account pool). Default: -1
+    #provisioned_concurrency: 0 # (Optional) Provisioned concurrent executions on the published version. Set > 0 to enable. Default: 0 (disabled)
+    #log_retention_days: 14    # (Optional) CloudWatch log retention in days. Valid values: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653, 0 (never expire). Default: 14
+
+    ##
+    # (Required) Environment variables passed to the function.
+    # Use an empty list to declare none.
+    environment:
+      variables: []
+      #  - name: "LOG_LEVEL"   # (Required) Environment variable name.
+      #    value: "INFO"       # (Required) Environment variable value.
+
+    ##
+    # (Required) Lambda Function URL endpoints. Use an empty list to create none.
+    functionUrls: []
+    #  - id: "prod"                     # (Required) Unique key for the endpoint within this module.
+    #    qualifier: "prod"              # (Required) Alias or version to expose. Empty string targets the unpublished "$LATEST".
+    #    authorization_type: "AWS_IAM"  # (Required) Authorization model. Valid values: AWS_IAM, NONE. Empty string resolves to NONE.
+    #    cors:                          # (Required) CORS block. Use {} to accept the defaults below.
+    #      allowCredentials: false      # (Optional) Allow cookies/credentials on cross-origin requests. Default: false
+    #      allowMethods: []             # (Optional) Allowed HTTP methods, e.g. ["GET", "POST"] or ["*"]. Default: []
+    #      allowOrigins: []             # (Optional) Allowed origins, e.g. ["https://example.com"] or ["*"]. Default: []
+    #      allowHeaders: []             # (Optional) Allowed request headers. Default: []
+    #      exposeHeaders: []            # (Optional) Response headers exposed to the browser. Default: []
+    #      maxAge: 600                  # (Optional) Preflight cache duration in seconds. Valid range 0-86400. Default: 600
+
+    ##
+    # (Optional) Alias pointing at the version published by this module.
+    # Default: disabled
+    #alias:
+    #  enabled: true             # (Optional) Create the alias. Default: false
+    #  name: "prod"              # (Required when enabled) Alias name, e.g. prod | uat | dev | demo
+    #  routing_config:           # (Optional) Weighted routing to a second version. Default: [] (all traffic to the published version)
+    #    - version: "1"          # (Required) Additional Lambda version to receive traffic.
+    #      weight: 0.1           # (Required) Fraction of traffic for that version. Valid range 0.0-1.0.
+
+    ##
+    # (Optional) Lambda layers to attach. Default: []
+    layers: []
+    #  - arn: "arn:aws:lambda:us-east-1:123456789012:layer:my-layer:1" # (Required) Fully qualified layer version ARN.
+
+    ##
+    # (Optional) VPC attachment for the function. Default: disabled
+    vpc:
+      enabled: false                # (Optional) Attach the function to a VPC. Default: false
+      create_security_group: false  # (Optional) Create a managed security group allowing all egress. Default: false
+      subnets: []                   # (Required when enabled) Subnet IDs for the ENIs, e.g. ["subnet-0abc...", "subnet-0def..."]
+      security_groups: []           # (Required when enabled and create_security_group is false) Existing security group IDs, e.g. ["sg-0abc..."]
+
+    ##
+    # (Optional) Advanced CloudWatch logging configuration.
+    #logging:
+    #  log_format: "JSON"            # (Optional) Log output format. Valid values: JSON, Text. Default: JSON
+    #  application_log_level: "INFO" # (Optional) Minimum level for application logs, only honored when log_format is JSON. Valid values: TRACE, DEBUG, INFO, WARN, ERROR, FATAL. Default: AWS default
+    #  system_log_level: "INFO"      # (Optional) Minimum level for Lambda system logs, only honored when log_format is JSON. Valid values: DEBUG, INFO, WARN. Default: AWS default
+
+    ##
+    # (Optional) AWS X-Ray tracing. Default: disabled
+    tracing: {}
+    #  enabled: true    # (Optional) Enable X-Ray tracing. Default: false
+    #  mode: "Active"   # (Required when enabled) Sampling mode. Valid values: Active, PassThrough
+
+    ##
+    # (Optional) Size of the function's /tmp directory.
+    # Default: disabled (AWS default of 512 MB)
+    #ephemeral_storage:
+    #  enabled: true    # (Optional) Override the default ephemeral storage size. Default: false
+    #  size: 1024       # (Optional) Size in MB. Valid range 512-10240. Default: 512
+
+    ##
+    # (Optional) Amazon EFS mount. Requires vpc.enabled = true. Default: disabled
+    #efs:
+    #  enabled: true                  # (Optional) Mount an EFS access point. Default: false
+    #  arn: "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0abc" # (Required when enabled) EFS access point ARN.
+    #  local_mount_path: "/mnt/efs"   # (Required when enabled) Mount path inside the function, must start with /mnt/.
+
+    ##
+    # (Optional) IAM configuration. When iam.enabled is false, the module creates a
+    # default execution role with CloudWatch Logs access.
+    iam: {}
+    #  enabled: true         # (Optional) Create a dedicated function role instead of the default role. Default: false
+    #  policy_attachments:   # (Optional) Managed policies attached to the function role. Only applied when iam.enabled is true. Default: []
+    #    - arn: "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess" # (Required) Managed policy ARN.
+    #  statements:           # (Optional) Inline policy statements added to the function role. Only applied when iam.enabled is true. Default: []
+    #    - effect: "Allow"   # (Required) Statement effect. Valid values: Allow, Deny
+    #      action:           # (Required) List of IAM actions.
+    #        - "s3:GetObject"
+    #        - "s3:PutObject"
+    #      resource:         # (Required) List of resource ARNs, or ["*"].
+    #        - "arn:aws:s3:::my-bucket"
+    #        - "arn:aws:s3:::my-bucket/*"
+    #    - effect: "Allow"
+    #      action:
+    #        - "dynamodb:GetItem"
+    #        - "dynamodb:PutItem"
+    #        - "dynamodb:Query"
+    #      resource:
+    #        - "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"
+    #  execRole:             # (Optional) Separate invoker role granting lambda:InvokeFunction. Required when using schedules. Default: disabled
+    #    enabled: true       # (Optional) Create the invoker role. Default: false
+    #    principals:         # (Optional) Service principals allowed to assume the role. "scheduler.amazonaws.com" is appended automatically when a schedule is configured. Default: ["lambda.amazonaws.com"]
+    #      - "lambda.amazonaws.com"
+    #      - "apigateway.amazonaws.com"
+    # NOTE: when vpc.enabled is true the module automatically adds the required
+    # ec2:*NetworkInterface / ec2:Describe* permissions to the function role and
+    # to the invoker role. You do not need to declare them in iam.statements.
+
+    ##
+    # (Optional) EventBridge Scheduler configuration.
+    # Requires iam.execRole.enabled = true. Default: disabled
+    #schedule:
+    #  enabled: false               # (Optional) Create a single schedule. Mutually exclusive with schedule.multiple. Default: false
+    #  schedule_group: ""           # (Optional) Name of an existing schedule group. When empty, a dedicated group is created for this function. Default: "" (create a group)
+    #  expression: "rate(1 hour)"   # (Required when enabled) Schedule expression, e.g. "rate(1 hour)", "cron(0 10 * * ? *)", "at(2026-01-01T00:00:00)"
+    #  timezone: "UTC"              # (Optional) IANA timezone or UTC offset, e.g. "America/Bogota". Default: "UTC"
+    #  suspended: false             # (Optional) Create the schedule in DISABLED state. Default: false
+    #  payload: {}                  # (Optional) Event payload for the function. Accepts a YAML/JSON object (encoded to JSON) or a raw string. Default: null
+    #  flexible:                    # (Optional) Flexible time window. Default: disabled (mode OFF)
+    #    enabled: true              # (Optional) Enable the flexible window. Default: false
+    #    maxWindow: 20              # (Optional) Window size in minutes. Valid range 1-1440. Default: 60
+    #  multiple:                    # (Optional) Several schedules for the same function, used instead of schedule.enabled. Default: []
+    #    - expression: "cron(0 10 * * ? *)" # (Required) Schedule expression for this entry.
+    #      timezone: "UTC"          # (Optional) IANA timezone or UTC offset. Default: "UTC"
+    #      suspended: false         # (Optional) Create this schedule in DISABLED state. Default: false
+    #      payload: {}              # (Optional) Event payload for this entry. Default: null
+    #      flexible:                # (Optional) Flexible time window for this entry. Default: disabled
+    #        enabled: true          # (Optional) Enable the flexible window. Default: false
+    #        maxWindow: 20          # (Optional) Window size in minutes. Default: 60
+
+    ##
+    # (Optional) Event sources invoking the function. All referenced buckets,
+    # queues and tables must already exist. Default: {} (no triggers)
+    triggers: {}
+    #  s3:
+    #    bucketName: "my-bucket"     # (Required) Name of an existing S3 bucket. Empty string disables the trigger.
+    #    events:                     # (Required) S3 event types.
+    #      - "s3:ObjectCreated:*"
+    #    filterPrefix: "incoming/"   # (Required) Key prefix filter. Empty string for no prefix filter.
+    #    filterSuffix: ".json"       # (Required) Key suffix filter. Empty string for no suffix filter.
+    #  sqs:
+    #    queueName: "my-queue"       # (Required) Name of an existing SQS queue. Empty string disables the trigger.
+    #    batchSize: 10               # (Optional) Records per batch. Valid range 1-10000 (max 10 for FIFO). Default: AWS default of 10
+    #    maximumConcurrency: 2       # (Optional) Maximum concurrent invocations for this source. Only applied when >= 2. Valid range 2-1000. Default: unset
+    #    metricsConfig: false        # (Optional) Publish the EventCount metric for this mapping. Default: false
+    #    filterCriteria: []          # (Optional) List of event filters. Default: [] (no filtering)
+    #      - pattern: '{"body":{"Location":["New York"]}}' # (Required unless pattern_object is set) Filter pattern as a raw JSON string.
+    #      - pattern_object:         # (Required unless pattern is set) Filter pattern as a YAML object, encoded to JSON by the module.
+    #          body:
+    #            Location:
+    #              - "New York"
+    #  dynamodb:
+    #    tableName: "my-table"       # (Required) Name of an existing DynamoDB table with streams enabled. Empty string disables the trigger.
+    #    startingPosition: "LATEST"  # (Optional) Stream position to read from. Valid values: LATEST, TRIM_HORIZON. Default: "LATEST"
+    #    batchSize: 100              # (Optional) Records per batch. Valid range 1-10000. Default: AWS default of 100
+    #    maximumRetryAttempts: 3     # (Optional) Retries for a failed batch. Valid range -1 to 10000, where -1 retries until the record expires. Default: AWS default of -1
+    #    metricsConfig: false        # (Optional) Publish the EventCount metric for this mapping. Default: false
+    #    filterCriteria: []          # (Optional) List of event filters, same structure as triggers.sqs.filterCriteria. Default: []
+  ```
+
+# Example usage
+examples: |-
+  All examples below are the `inputs.yaml` produced by `terragrunt scaffold`, edited for a specific scenario.
+
+  #### Minimal function
+
+  The smallest working configuration. Creates the function, a default execution role with CloudWatch Logs
+  access, and a log group with 14-day retention.
+
+  ```yaml
+  namespace: "dev"
+  repository_owner: "cloudopsworks"
+  release:
+    name: "hello-world"
+    source:
+      version: "1.0.0"
+  versions_bucket: "acme-artifacts-use1"
+  bucket_path: "releases/hello-world/1.0.0/function.zip"
+  lambda:
+    handler: "index.handler"
+    runtime: "nodejs22.x"
+    environment:
+      variables:
+        - name: "LOG_LEVEL"
+          value: "INFO"
+    functionUrls: []
+  ```
+
+  #### VPC-attached API handler with a Function URL
+
+  Attaches the function to private subnets with a module-managed security group, grants it read access to an S3
+  bucket, and exposes an IAM-authorized Function URL. The `ec2:*` ENI permissions required for VPC attachment are
+  added automatically.
+
+  ```yaml
+  namespace: "prod"
+  repository_owner: "cloudopsworks"
+  release:
+    name: "api-handler"
+    source:
+      version: "2.1.0"
+  versions_bucket: "acme-artifacts-use1"
+  bucket_path: "releases/api-handler/2.1.0/function.zip"
+  lambda:
+    handler: "api.handler"
+    runtime: "nodejs22.x"
+    memory_size: 512
+    timeout: 30
+    log_retention_days: 30
+    environment:
+      variables:
+        - name: "NODE_ENV"
+          value: "production"
+    vpc:
+      enabled: true
+      create_security_group: true
+      subnets:
+        - "subnet-0a1b2c3d4e5f60718"
+        - "subnet-0a1b2c3d4e5f60719"
+    iam:
+      enabled: true
+      statements:
+        - effect: "Allow"
+          action:
+            - "s3:GetObject"
+            - "s3:ListBucket"
+          resource:
+            - "arn:aws:s3:::acme-uploads"
+            - "arn:aws:s3:::acme-uploads/*"
+    tracing:
+      enabled: true
+      mode: "Active"
+    functionUrls:
+      - id: "prod"
+        qualifier: ""
+        authorization_type: "AWS_IAM"
+        cors:
+          allowCredentials: true
+          allowMethods:
+            - "GET"
+            - "POST"
+          allowOrigins:
+            - "https://app.example.com"
+          allowHeaders:
+            - "content-type"
+            - "authorization"
+          maxAge: 86400
+  ```
+
+  #### Scheduled job
+
+  Runs the function hourly through EventBridge Scheduler. Scheduling requires `iam.execRole.enabled: true` —
+  the module adds `scheduler.amazonaws.com` to the invoker role's trust policy automatically.
+
+  ```yaml
+  namespace: "prod"
+  repository_owner: "cloudopsworks"
+  release:
+    name: "nightly-report"
+    source:
+      version: "1.4.2"
+  versions_bucket: "acme-artifacts-use1"
+  bucket_path: "releases/nightly-report/1.4.2/function.zip"
+  lambda:
+    handler: "com.example.Report::handleRequest"
+    runtime: "java21"
+    memory_size: 1024
+    timeout: 900
+    environment:
+      variables: []
+    functionUrls: []
+    iam:
+      enabled: true
+      execRole:
+        enabled: true
+    schedule:
+      enabled: true
+      expression: "cron(0 3 * * ? *)"
+      timezone: "America/Bogota"
+      suspended: false
+      flexible:
+        enabled: true
+        maxWindow: 20
+      payload:
+        mode: "full"
+        notify: true
+  ```
+
+  #### SQS-triggered worker
+
+  Consumes an existing SQS queue with a filter on the message body. The SQS read permissions are attached to the
+  function role automatically when `iam.enabled` is true.
+
+  ```yaml
+  namespace: "prod"
+  repository_owner: "cloudopsworks"
+  release:
+    name: "order-worker"
+    source:
+      version: "3.0.1"
+  versions_bucket: "acme-artifacts-use1"
+  bucket_path: "releases/order-worker/3.0.1/function.zip"
+  lambda:
+    handler: "worker.handler"
+    runtime: "python3.13"
+    memory_size: 256
+    timeout: 120
+    reserved_concurrency: 20
+    environment:
+      variables:
+        - name: "QUEUE_MODE"
+          value: "batch"
+    functionUrls: []
+    iam:
+      enabled: true
+    triggers:
+      sqs:
+        queueName: "acme-orders"
+        batchSize: 10
+        maximumConcurrency: 5
+        metricsConfig: true
+        filterCriteria:
+          - pattern_object:
+              body:
+                Location:
+                  - "New York"
   ```
 
 # How to get started quickly
 quickstart: |-
-  1. Prepare your Lambda function code and package it as a ZIP file
-  2. Upload the ZIP file to an S3 bucket
-  3. Create a new Terraform configuration file
-  4. Configure the module with required parameters:
-     - Set the namespace and release name
-     - Configure the Lambda handler and runtime
-     - Specify the S3 bucket and path for the function code
-     - Add any required environment variables
-  5. Initialize Terraform:
-     ```bash
-     terraform init
+  1. Package your Lambda function as a ZIP file and upload it to the S3 versions bucket used by your organization.
+     Note the bucket name and the object key — they become `versions_bucket` and `bucket_path`.
+  2. Create the deployment directory inside your Terragrunt hierarchy and enter it:
+     ```sh
+     mkdir -p <environment>/<region>/<spoke>/lambda-my-function
+     cd <environment>/<region>/<spoke>/lambda-my-function
      ```
-  6. Review the planned changes:
-     ```bash
-     terraform plan
+  3. Scaffold the module:
+     ```sh
+     terragrunt scaffold github.com/cloudopsworks/terraform-module-aws-lambda-deploy
      ```
-  7. Apply the configuration:
-     ```bash
-     terraform apply
+  4. Edit the generated `inputs.yaml`:
+     - Set `namespace`, `repository_owner`, and `release` (`name` and `source.version`).
+     - Set `versions_bucket` and `bucket_path` to point at your uploaded package.
+     - Set `lambda.handler` and `lambda.runtime`.
+     - Add any `lambda.environment.variables` your function needs, and leave `lambda.functionUrls: []`
+       unless you want a public or IAM-authorized HTTPS endpoint.
+     - Uncomment only the optional blocks you actually need — every block is documented inline.
+  5. Review the planned changes:
+     ```sh
+     terragrunt plan
      ```
+  6. Apply:
+     ```sh
+     terragrunt apply
+     ```
+  7. Retrieve the function identifiers for downstream modules:
+     ```sh
+     terragrunt output function_arn
+     terragrunt output function_invoke_arn
+     ```
+
+  > **Note:** `is_hub`, `org`, `spoke_def`, and `extra_tags` are supplied by the Terragrunt hierarchy
+  > (`env-inputs.yaml`, `spoke-inputs.yaml`, and the merged tag files). Do not set them in `inputs.yaml`.
 
 include:
   - "docs/targets.md"

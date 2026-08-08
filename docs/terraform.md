@@ -3,19 +3,19 @@
 | Name | Version |
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.3 |
-| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 6.4 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 6.35 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.4 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.35 |
 
 ## Modules
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_tags"></a> [tags](#module\_tags) | cloudopsworks/tags/local | 1.0.9 |
+| <a name="module_tags"></a> [tags](#module\_tags) | cloudopsworks/tags/local | 1.0.10 |
 
 ## Resources
 
@@ -70,27 +70,27 @@
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_absolute_path"></a> [absolute\_path](#input\_absolute\_path) | Absolute path to the lambda function | `string` | `"./"` | no |
-| <a name="input_bucket_path"></a> [bucket\_path](#input\_bucket\_path) | Path to the S3 bucket | `string` | `""` | no |
-| <a name="input_extra_tags"></a> [extra\_tags](#input\_extra\_tags) | n/a | `map(string)` | `{}` | no |
-| <a name="input_is_hub"></a> [is\_hub](#input\_is\_hub) | Establish this is a HUB or spoke configuration | `bool` | `false` | no |
-| <a name="input_lambda"></a> [lambda](#input\_lambda) | Lambda function configuration | `any` | `{}` | no |
-| <a name="input_logs_bucket"></a> [logs\_bucket](#input\_logs\_bucket) | S3 bucket for application logs | `string` | `""` | no |
-| <a name="input_namespace"></a> [namespace](#input\_namespace) | Namespace for the resources | `string` | n/a | yes |
-| <a name="input_org"></a> [org](#input\_org) | n/a | <pre>object({<br/>    organization_name = string<br/>    organization_unit = string<br/>    environment_type  = string<br/>    environment_name  = string<br/>  })</pre> | n/a | yes |
-| <a name="input_release"></a> [release](#input\_release) | Release configuration | `any` | n/a | yes |
-| <a name="input_repository_owner"></a> [repository\_owner](#input\_repository\_owner) | Owner of the repository | `string` | n/a | yes |
-| <a name="input_spoke_def"></a> [spoke\_def](#input\_spoke\_def) | n/a | `string` | `"001"` | no |
-| <a name="input_versions_bucket"></a> [versions\_bucket](#input\_versions\_bucket) | S3 bucket for application versions | `string` | n/a | yes |
+| <a name="input_absolute_path"></a> [absolute\_path](#input\_absolute\_path) | (Optional) Absolute path to the Lambda function sources on the runner. Supplied by the CI/CD pipeline; reserved for future use and not currently referenced by any resource. Default: "./" | `string` | `"./"` | no |
+| <a name="input_bucket_path"></a> [bucket\_path](#input\_bucket\_path) | (Optional) S3 object key of the deployment package inside versions\_bucket, e.g. "releases/my-function/1.0.0/function.zip". Default: "" | `string` | `""` | no |
+| <a name="input_extra_tags"></a> [extra\_tags](#input\_extra\_tags) | Extra tags to add to the resources | `map(string)` | `{}` | no |
+| <a name="input_is_hub"></a> [is\_hub](#input\_is\_hub) | Is this a hub or spoke configuration? | `bool` | `false` | no |
+| <a name="input_lambda"></a> [lambda](#input\_lambda) | (Required) AWS Lambda function configuration. Supports runtime settings, environment variables, function URLs, aliases, layers, VPC and EFS attachment, logging, X-Ray tracing, IAM roles, EventBridge schedules, and S3/SQS/DynamoDB triggers. See the inline documentation above for every supported attribute. Default: {} | `any` | `{}` | no |
+| <a name="input_logs_bucket"></a> [logs\_bucket](#input\_logs\_bucket) | (Optional) Name of the S3 bucket for application logs. Supplied by the CI/CD pipeline; reserved for future use and not currently referenced by any resource. Default: "" | `string` | `""` | no |
+| <a name="input_namespace"></a> [namespace](#input\_namespace) | (Required) Namespace appended to the Lambda function name and its IAM resources, e.g. "dev". Combined with release.name to form the function name "<release.name>-<namespace>". | `string` | n/a | yes |
+| <a name="input_org"></a> [org](#input\_org) | Organization details | <pre>object({<br/>    organization_name = string<br/>    organization_unit = string<br/>    environment_type  = string<br/>    environment_name  = string<br/>  })</pre> | n/a | yes |
+| <a name="input_release"></a> [release](#input\_release) | (Required) Release metadata for the deployed artifact. Requires release.name (base name for the function and its IAM resources) and release.source.version (artifact version shown in the function description). | `any` | n/a | yes |
+| <a name="input_repository_owner"></a> [repository\_owner](#input\_repository\_owner) | (Required) Owner of the source code repository, e.g. "cloudopsworks". Supplied by the CI/CD pipeline for traceability; reserved for future use and not currently referenced by any resource. | `string` | n/a | yes |
+| <a name="input_spoke_def"></a> [spoke\_def](#input\_spoke\_def) | Spoke ID Number, must be a 3 digit number | `string` | `"001"` | no |
+| <a name="input_versions_bucket"></a> [versions\_bucket](#input\_versions\_bucket) | (Required) Name of the S3 bucket holding the packaged application versions. The module reads the deployment ZIP from this bucket. | `string` | n/a | yes |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| <a name="output_function_arn"></a> [function\_arn](#output\_function\_arn) | n/a |
-| <a name="output_function_invoke_arn"></a> [function\_invoke\_arn](#output\_function\_invoke\_arn) | n/a |
-| <a name="output_function_name"></a> [function\_name](#output\_function\_name) | n/a |
-| <a name="output_lambda_exec_role"></a> [lambda\_exec\_role](#output\_lambda\_exec\_role) | n/a |
-| <a name="output_lambda_exec_role_arn"></a> [lambda\_exec\_role\_arn](#output\_lambda\_exec\_role\_arn) | n/a |
-| <a name="output_lambda_function_role"></a> [lambda\_function\_role](#output\_lambda\_function\_role) | n/a |
-| <a name="output_lambda_function_role_arn"></a> [lambda\_function\_role\_arn](#output\_lambda\_function\_role\_arn) | n/a |
+| <a name="output_function_arn"></a> [function\_arn](#output\_function\_arn) | Unqualified ARN of the deployed Lambda function. |
+| <a name="output_function_invoke_arn"></a> [function\_invoke\_arn](#output\_function\_invoke\_arn) | ARN to be used by API Gateway and other integrations to invoke the Lambda function. |
+| <a name="output_function_name"></a> [function\_name](#output\_function\_name) | Name of the deployed Lambda function, formed as "<release.name>-<namespace>". |
+| <a name="output_lambda_exec_role"></a> [lambda\_exec\_role](#output\_lambda\_exec\_role) | Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string when lambda.iam.execRole.enabled is false. |
+| <a name="output_lambda_exec_role_arn"></a> [lambda\_exec\_role\_arn](#output\_lambda\_exec\_role\_arn) | ARN of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string when lambda.iam.execRole.enabled is false. |
+| <a name="output_lambda_function_role"></a> [lambda\_function\_role](#output\_lambda\_function\_role) | Name of the IAM role assumed by the Lambda function at runtime. Returns the dedicated function role when lambda.iam.enabled is true, otherwise the default role created by this module. |
+| <a name="output_lambda_function_role_arn"></a> [lambda\_function\_role\_arn](#output\_lambda\_function\_role\_arn) | ARN of the IAM role assumed by the Lambda function at runtime. Returns the dedicated function role when lambda.iam.enabled is true, otherwise the default role created by this module. |
