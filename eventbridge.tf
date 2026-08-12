@@ -65,3 +65,10 @@ resource "aws_scheduler_schedule" "multiple_schedule" {
     input    = try(jsonencode(each.value.schedule.payload), each.value.schedule.payload, null)
   }
 }
+
+resource "aws_lambda_event_source_mapping" "lambda_schedule_trigger" {
+  count            = try(var.lambda.schedule.enabled, false) ? 1 : 0
+  event_source_arn = aws_scheduler_schedule.lambda_function[0].arn
+  function_name    = aws_lambda_function.lambda_function.arn
+  tags             = local.all_tags
+}
