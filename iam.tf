@@ -8,6 +8,15 @@
 #
 data "aws_caller_identity" "current" {}
 
+locals {
+  lambda_custom_role_enabled = try(var.lambda.iam.enabled, false)
+  lambda_execution_role_arn  = local.lambda_custom_role_enabled ? aws_iam_role.lambda_function[0].arn : aws_iam_role.default_lambda_function[0].arn
+  lambda_execution_role_name = local.lambda_custom_role_enabled ? aws_iam_role.lambda_function[0].name : aws_iam_role.default_lambda_function[0].name
+  lambda_tracing_mode = coalesce(try(var.lambda.tracing.enabled, null), false) ? (
+    try(var.lambda.tracing.mode, null) == null ? "Active" : var.lambda.tracing.mode
+  ) : null
+}
+
 data "aws_iam_policy_document" "assume_role" {
   statement {
     effect = "Allow"
@@ -22,7 +31,7 @@ data "aws_iam_policy_document" "assume_role" {
 }
 
 resource "aws_iam_role" "default_lambda_function" {
-  count              = try(var.lambda.iam.enabled, false) ? 0 : 1
+  count              = local.lambda_custom_role_enabled ? 0 : 1
   name               = local.default_role_name
   path               = "/${lower(var.org.organization_name)}-${lower(var.org.organization_unit)}/"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
@@ -70,7 +79,26 @@ resource "aws_iam_policy" "lambda_function_logs" {
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_function_logs" {
-  count      = try(var.lambda.iam.enabled, false) ? 0 : 1
+  count      = local.lambda_custom_role_enabled ? 0 : 1
   role       = aws_iam_role.default_lambda_function[0].name
   policy_arn = aws_iam_policy.lambda_function_logs.arn
+}
+
+data "aws_iam_policy_document" "lambda_function_xray" {
+  count = local.lambda_tracing_mode == "Active" ? 1 : 0
+  statement {
+    effect = "Allow"
+    actions = [
+      "xray:PutTraceSegments",
+      "xray:PutTelemetryRecords",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "lambda_function_xray" {
+  count  = local.lambda_tracing_mode == "Active" ? 1 : 0
+  name   = "lambda-xray-write"
+  role   = local.lambda_execution_role_name
+  policy = data.aws_iam_policy_document.lambda_function_xray[0].json
 }

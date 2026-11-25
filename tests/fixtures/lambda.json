@@ -1,0 +1,6 @@
+{
+  "handler": "index.handler",
+  "runtime": "nodejs22.x",
+  "environment": { "variables": [] },
+  "functionUrls": []
+}

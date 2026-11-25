@@ -10,30 +10,42 @@
 #
 # S3
 #
+locals {
+  s3_bucket_name      = try(var.lambda.triggers.s3.bucketName, null)
+  s3_source_account   = coalesce(try(var.lambda.triggers.s3.sourceAccount, null), data.aws_caller_identity.current.account_id)
+  sqs_queue_name      = try(var.lambda.triggers.sqs.queueName, null)
+  dynamodb_table_name = try(var.lambda.triggers.dynamodb.tableName, null)
+
+  s3_trigger_enabled       = local.s3_bucket_name != null && local.s3_bucket_name != ""
+  sqs_trigger_enabled      = local.sqs_queue_name != null && local.sqs_queue_name != ""
+  dynamodb_trigger_enabled = local.dynamodb_table_name != null && local.dynamodb_table_name != ""
+}
+
 data "aws_s3_bucket" "notification" {
-  count  = try(var.lambda.triggers.s3.bucketName, "") != "" ? 1 : 0
-  bucket = var.lambda.triggers.s3.bucketName
+  count  = local.s3_trigger_enabled ? 1 : 0
+  bucket = local.s3_bucket_name
 }
 
 resource "aws_lambda_permission" "allow_bucket" {
-  count         = try(var.lambda.triggers.s3.bucketName, "") != "" ? 1 : 0
-  statement_id  = "AllowExecutionFromS3Bucket"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda_function.function_name
-  principal     = "s3.amazonaws.com"
-  source_arn    = data.aws_s3_bucket.notification[0].arn
+  count          = local.s3_trigger_enabled ? 1 : 0
+  statement_id   = "AllowExecutionFromS3Bucket"
+  action         = "lambda:InvokeFunction"
+  function_name  = aws_lambda_function.lambda_function.function_name
+  principal      = "s3.amazonaws.com"
+  source_arn     = data.aws_s3_bucket.notification[0].arn
+  source_account = local.s3_source_account
 }
 
 resource "aws_s3_bucket_notification" "bucket_notification" {
-  count  = try(var.lambda.triggers.s3.bucketName, "") != "" ? 1 : 0
+  count  = local.s3_trigger_enabled ? 1 : 0
   bucket = data.aws_s3_bucket.notification[0].id
 
   lambda_function {
-    id                  = format("s3-%s-%s", var.lambda.triggers.s3.bucketName, aws_lambda_function.lambda_function.function_name)
+    id                  = format("s3-%s-%s", local.s3_bucket_name, aws_lambda_function.lambda_function.function_name)
     lambda_function_arn = aws_lambda_function.lambda_function.arn
     events              = var.lambda.triggers.s3.events
-    filter_prefix       = var.lambda.triggers.s3.filterPrefix
-    filter_suffix       = var.lambda.triggers.s3.filterSuffix
+    filter_prefix       = try(var.lambda.triggers.s3.filterPrefix, null)
+    filter_suffix       = try(var.lambda.triggers.s3.filterSuffix, null)
   }
 
   depends_on = [aws_lambda_permission.allow_bucket]
@@ -43,15 +55,16 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
 # SQS
 #
 data "aws_sqs_queue" "notification" {
-  count = try(var.lambda.triggers.sqs.queueName, "") != "" ? 1 : 0
-  name  = var.lambda.triggers.sqs.queueName
+  count = local.sqs_trigger_enabled ? 1 : 0
+  name  = local.sqs_queue_name
 }
 
 resource "aws_lambda_event_source_mapping" "lambda_sqs_trigger" {
-  count            = try(var.lambda.triggers.sqs.queueName, "") != "" ? 1 : 0
-  event_source_arn = data.aws_sqs_queue.notification[0].arn
-  function_name    = aws_lambda_function.lambda_function.arn
-  batch_size       = try(var.lambda.triggers.sqs.batchSize, null)
+  count                              = local.sqs_trigger_enabled ? 1 : 0
+  event_source_arn                   = data.aws_sqs_queue.notification[0].arn
+  function_name                      = aws_lambda_function.lambda_function.arn
+  batch_size                         = try(var.lambda.triggers.sqs.batchSize, null)
+  maximum_batching_window_in_seconds = try(var.lambda.triggers.sqs.maximumBatchingWindowInSeconds, null)
 
   dynamic "metrics_config" {
     for_each = try(var.lambda.triggers.sqs.metricsConfig, false) ? [1] : []
@@ -79,32 +92,26 @@ resource "aws_lambda_event_source_mapping" "lambda_sqs_trigger" {
     }
   }
   tags = local.all_tags
-}
 
-resource "aws_lambda_permission" "allow_sqs" {
-  count         = try(var.lambda.triggers.sqs.queueName, "") != "" ? 1 : 0
-  statement_id  = "AllowExecutionFromSQS"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda_function.function_name
-  principal     = "sqs.amazonaws.com"
-  source_arn    = data.aws_sqs_queue.notification[0].arn
+  depends_on = [aws_iam_role_policy.lambda_function_trigger_sqs]
 }
 
 #
 # DynamoDB
 #
 data "aws_dynamodb_table" "notification" {
-  count = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
-  name  = var.lambda.triggers.dynamodb.tableName
+  count = local.dynamodb_trigger_enabled ? 1 : 0
+  name  = local.dynamodb_table_name
 }
 
 resource "aws_lambda_event_source_mapping" "lambda_dynamodb_trigger" {
-  count                  = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
-  event_source_arn       = data.aws_dynamodb_table.notification[0].stream_arn
-  function_name          = aws_lambda_function.lambda_function.arn
-  starting_position      = try(var.lambda.triggers.dynamodb.startingPosition, "LATEST")
-  batch_size             = try(var.lambda.triggers.dynamodb.batchSize, null)
-  maximum_retry_attempts = try(var.lambda.triggers.dynamodb.maximumRetryAttempts, null)
+  count                              = local.dynamodb_trigger_enabled ? 1 : 0
+  event_source_arn                   = data.aws_dynamodb_table.notification[0].stream_arn
+  function_name                      = aws_lambda_function.lambda_function.arn
+  starting_position                  = try(var.lambda.triggers.dynamodb.startingPosition, "LATEST")
+  batch_size                         = try(var.lambda.triggers.dynamodb.batchSize, null)
+  maximum_retry_attempts             = try(var.lambda.triggers.dynamodb.maximumRetryAttempts, null)
+  maximum_batching_window_in_seconds = try(var.lambda.triggers.dynamodb.maximumBatchingWindowInSeconds, null)
 
   dynamic "metrics_config" {
     for_each = try(var.lambda.triggers.dynamodb.metricsConfig, false) ? [1] : []
@@ -125,13 +132,13 @@ resource "aws_lambda_event_source_mapping" "lambda_dynamodb_trigger" {
     }
   }
   tags = local.all_tags
-}
 
-resource "aws_lambda_permission" "allow_dynamodb" {
-  count         = try(var.lambda.triggers.dynamodb.tableName, "") != "" ? 1 : 0
-  statement_id  = "AllowExecutionFromDynamoDB"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda_function.function_name
-  principal     = "dynamodb.amazonaws.com"
-  source_arn    = data.aws_dynamodb_table.notification[0].arn
+  depends_on = [aws_iam_role_policy.lambda_function_trigger_dybamodb]
+
+  lifecycle {
+    precondition {
+      condition     = try(length(data.aws_dynamodb_table.notification[0].stream_arn) > 0, false)
+      error_message = "The table specified in lambda.triggers.dynamodb.tableName must have DynamoDB Streams enabled."
+    }
+  }
 }
