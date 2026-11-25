@@ -33,11 +33,11 @@ output "lambda_function_role_arn" {
 }
 
 output "lambda_exec_role" {
-  description = "Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string unless a schedule is configured or lambda.iam.execRole.enabled is true."
+  description = "Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty when there are no schedules, enabled callers, or explicitly enabled invoker role."
   value       = local.lambda_invoker_role_enabled ? aws_iam_role.lambda_exec[0].name : ""
 }
 
 output "lambda_exec_role_arn" {
-  description = "ARN of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string unless a schedule is configured or lambda.iam.execRole.enabled is true."
+  description = "ARN to use as integration credentials for a service trusted to invoke this function. Empty when there are no schedules, enabled callers, or explicitly enabled invoker role."
   value       = local.lambda_invoker_role_enabled ? aws_iam_role.lambda_exec[0].arn : ""
 }

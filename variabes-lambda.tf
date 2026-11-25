@@ -78,9 +78,8 @@
 #         resource:                   # (Required) List of resource ARNs, e.g. ["arn:aws:s3:::my-bucket/*"] or ["*"].
 #           - "arn:aws:s3:::my-bucket/*"
 #     execRole:                       # (Optional) Separate invoker role granting lambda:InvokeFunction on this function. Created automatically for configured schedules.
-#       enabled: true                 # (Optional) Create an invoker role explicitly. Default: false
-#       principals:                   # (Optional) Trusted services for an explicit invoker role. Default: ["lambda.amazonaws.com"]. Scheduler trust is added with account/group restrictions.
-#         - "lambda.amazonaws.com"
+#       enabled: true                 # (Optional) Omit to enable from a non-empty principals list. False disables custom callers, not managed schedules.
+#       principals:                   # (Optional) Services that assume the invoker role. Default: none, or ["lambda.amazonaws.com"] when explicitly enabled. Managed Scheduler trust is automatic.
 #         - "apigateway.amazonaws.com"
 #
 #   schedule:                         # (Optional) EventBridge Scheduler configuration. Scheduler gets a separate invoker role automatically. Default: no schedules
@@ -154,6 +153,14 @@ variable "lambda" {
   description = "(Required) AWS Lambda function configuration. Supports runtime settings, environment variables, function URLs, aliases, layers, VPC and EFS attachment, logging, X-Ray tracing, IAM roles, EventBridge Scheduler, and S3, SQS, DynamoDB Streams, SNS, EventBridge event rules, and Kinesis triggers. See the inline documentation above for every supported attribute. Default: {}"
   type        = any
   default     = {}
+
+  validation {
+    condition = try(var.lambda.iam.execRole.principals, null) == null || try(alltrue([
+      for principal in tolist(var.lambda.iam.execRole.principals) :
+      can(regex("^[a-z0-9-]+(\\.[a-z0-9-]+)+$", principal))
+    ]), false)
+    error_message = "lambda.iam.execRole.principals must be a list of service principal names such as apigateway.amazonaws.com, not ARNs, blanks, or wildcards."
+  }
 
   validation {
     condition = !coalesce(try(var.lambda.tracing.enabled, null), false) || (

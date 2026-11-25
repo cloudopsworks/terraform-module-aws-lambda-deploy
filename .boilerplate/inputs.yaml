@@ -143,10 +143,9 @@ lambda:
   #      resource:
   #        - "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"
   #  execRole:             # (Optional) Separate invoker role. Created automatically for configured schedules.
-  #    enabled: true       # (Optional) Create an invoker role explicitly. Default: false
-  #    principals:         # (Optional) Trusted services for an explicit invoker role. Default: ["lambda.amazonaws.com"]. Scheduler trust is added with account/group restrictions.
-  #      - "lambda.amazonaws.com"
-  #      - "apigateway.amazonaws.com"
+  #    enabled: true       # (Optional) Omit to enable from a non-empty principals list. False disables custom callers, not managed schedules.
+  #    principals:         # (Optional) Services that assume this role. Default: none, or ["lambda.amazonaws.com"] when explicitly enabled.
+  #      - "apigateway.amazonaws.com" # Only for an API Gateway integration using lambda_exec_role_arn as credentials.
   # NOTE: when vpc.enabled is true the module automatically adds the required
   # ENI permissions to the dedicated function role (iam.enabled: true).
 

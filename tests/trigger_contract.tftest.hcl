@@ -452,6 +452,150 @@ run "explicit_invoker_preserves_other_trust_for_existing_schedule_group" {
   }
 }
 
+run "configured_principals_enable_invoker" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { principals = ["apigateway.amazonaws.com"] } }
+    })
+  }
+
+  assert {
+    condition = try(
+      output.lambda_exec_role == "ingest-test-exec-role" &&
+      toset(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).actions) == toset(["sts:AssumeRole"]) &&
+      one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).type == "Service" &&
+      toset(one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).identifiers) == toset(["apigateway.amazonaws.com"]) &&
+      toset(one(data.aws_iam_policy_document.lambda_exec[0].statement).actions) == toset(["lambda:InvokeFunction"]),
+      false,
+    )
+    error_message = "Naming API Gateway as a caller must give it an invoker role with only Lambda invocation permission, even without an enabled flag."
+  }
+}
+
+run "configured_principals_can_share_scheduler_invoker" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { principals = ["apigateway.amazonaws.com"] } }
+      schedule = {
+        enabled        = true
+        expression     = "rate(1 hour)"
+        schedule_group = "shared-scheduling"
+      }
+    })
+  }
+
+  assert {
+    condition = (
+      length(data.aws_iam_policy_document.lambda_assume_role[0].statement) == 2 &&
+      anytrue([
+        for statement in data.aws_iam_policy_document.lambda_assume_role[0].statement :
+        toset(one(statement.principals).identifiers) == toset(["apigateway.amazonaws.com"]) && length(statement.condition) == 0
+      ]) &&
+      anytrue([
+        for statement in data.aws_iam_policy_document.lambda_assume_role[0].statement :
+        toset(one(statement.principals).identifiers) == toset(["scheduler.amazonaws.com"]) &&
+        tomap({ for condition in statement.condition : condition.variable => one(condition.values) }) == tomap({
+          "aws:SourceAccount" = "123456789012"
+          "aws:SourceArn"     = "arn:aws:scheduler:us-east-1:123456789012:schedule-group/shared-scheduling"
+        })
+      ])
+    )
+    error_message = "Configured trust must coexist with automatic Scheduler trust; only Scheduler is scoped to the schedule group and account."
+  }
+}
+
+run "disabled_invoker_does_not_trust_configured_principals" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { enabled = false, principals = ["apigateway.amazonaws.com"] } }
+    })
+  }
+
+  assert {
+    condition     = output.lambda_exec_role == "" && length(aws_iam_role.lambda_exec) == 0
+    error_message = "An explicit false must override configured callers when there is no schedule."
+  }
+}
+
+run "disabled_invoker_still_allows_scheduler_only" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam      = { execRole = { enabled = false, principals = ["apigateway.amazonaws.com"] } }
+      schedule = { enabled = true, expression = "rate(1 hour)" }
+    })
+  }
+
+  assert {
+    condition = try(
+      toset(one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).identifiers) == toset(["scheduler.amazonaws.com"]) &&
+      length(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).condition) == 2,
+      false,
+    )
+    error_message = "When the explicit invoker is disabled, the configured schedule must keep restricted Scheduler trust without trusting other configured callers."
+  }
+}
+
+run "null_principals_keep_explicit_invoker_default" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { enabled = true, principals = null } }
+    })
+  }
+
+  assert {
+    condition = try(
+      toset(one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).identifiers) == toset(["lambda.amazonaws.com"]),
+      false,
+    )
+    error_message = "Null principals must behave like an omitted list on an explicitly enabled invoker."
+  }
+}
+
+run "invoker_without_trust_is_rejected" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { enabled = true, principals = [] } }
+    })
+  }
+  expect_failures = [aws_iam_role.lambda_exec[0]]
+}
+
+run "wildcard_invoker_principal_is_rejected" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { principals = ["*"] } }
+    })
+  }
+  expect_failures = [var.lambda]
+}
+
+run "blank_invoker_principal_is_rejected" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { principals = [""] } }
+    })
+  }
+  expect_failures = [var.lambda]
+}
+
+run "scalar_invoker_principal_is_rejected" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { principals = "apigateway.amazonaws.com" } }
+    })
+  }
+  expect_failures = [var.lambda]
+}
+
 run "invalid_tracing_mode_is_rejected" {
   command = plan
   variables {

@@ -9,12 +9,19 @@
 data "aws_partition" "current" {}
 
 locals {
-  lambda_invoker_role_explicit = try(var.lambda.iam.execRole.enabled, false)
-  lambda_invoker_role_enabled  = local.lambda_invoker_role_explicit || local.scheduler_enabled
+  # Omitted: infer opt-in from the callers. Explicit false keeps them disabled.
+  lambda_invoker_role_requested = tobool(try(var.lambda.iam.execRole.enabled, null))
+  lambda_invoker_role_explicit  = local.lambda_invoker_role_requested == true
+  lambda_invoker_configured_principals = coalesce(
+    try(tolist(var.lambda.iam.execRole.principals), null),
+    local.lambda_invoker_role_explicit ? ["lambda.amazonaws.com"] : [],
+  )
+  # A managed Scheduler must use the account/group-scoped statement below.
   lambda_invoker_principals = [
-    for principal in try(var.lambda.iam.execRole.principals, ["lambda.amazonaws.com"]) : principal
-    if !local.scheduler_enabled || principal != "scheduler.amazonaws.com"
+    for principal in local.lambda_invoker_configured_principals : principal
+    if local.lambda_invoker_role_requested != false && (!local.scheduler_enabled || principal != "scheduler.amazonaws.com")
   ]
+  lambda_invoker_role_enabled = local.scheduler_enabled || local.lambda_invoker_role_explicit || length(local.lambda_invoker_principals) > 0
 
   lambda_function_needs_eni = local.lambda_custom_role_enabled && try(var.lambda.vpc.enabled, false)
   lambda_invoker_needs_eni  = local.lambda_invoker_role_explicit && try(var.lambda.vpc.enabled, false)
@@ -24,7 +31,7 @@ data "aws_iam_policy_document" "lambda_assume_role" {
   count = local.lambda_invoker_role_enabled ? 1 : 0
 
   dynamic "statement" {
-    for_each = local.lambda_invoker_role_explicit && length(local.lambda_invoker_principals) > 0 ? [1] : []
+    for_each = length(local.lambda_invoker_principals) > 0 ? [1] : []
     content {
       actions = ["sts:AssumeRole"]
       principals {
@@ -81,6 +88,13 @@ resource "aws_iam_role" "lambda_exec" {
     },
     local.all_tags
   )
+
+  lifecycle {
+    precondition {
+      condition     = local.scheduler_enabled || length(local.lambda_invoker_principals) > 0
+      error_message = "lambda.iam.execRole.principals cannot be empty for an enabled invoker role without a schedule. Supply the service that assumes the role, or disable execRole."
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "lambda_exec" {
