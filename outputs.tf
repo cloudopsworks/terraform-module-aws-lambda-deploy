@@ -24,20 +24,20 @@ output "function_invoke_arn" {
 
 output "lambda_function_role" {
   description = "Name of the IAM role assumed by the Lambda function at runtime. Returns the dedicated function role when lambda.iam.enabled is true, otherwise the default role created by this module."
-  value       = try(var.lambda.iam.enabled, false) ? aws_iam_role.lambda_function[0].name : aws_iam_role.default_lambda_function[0].name
+  value       = local.lambda_execution_role_name
 }
 
 output "lambda_function_role_arn" {
   description = "ARN of the IAM role assumed by the Lambda function at runtime. Returns the dedicated function role when lambda.iam.enabled is true, otherwise the default role created by this module."
-  value       = try(var.lambda.iam.enabled, false) ? aws_iam_role.lambda_function[0].arn : aws_iam_role.default_lambda_function[0].arn
+  value       = local.lambda_execution_role_arn
 }
 
 output "lambda_exec_role" {
-  description = "Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string when lambda.iam.execRole.enabled is false."
-  value       = try(var.lambda.iam.execRole.enabled, false) ? aws_iam_role.lambda_exec[0].name : ""
+  description = "Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string unless a schedule is configured or lambda.iam.execRole.enabled is true."
+  value       = local.lambda_invoker_role_enabled ? aws_iam_role.lambda_exec[0].name : ""
 }
 
 output "lambda_exec_role_arn" {
-  description = "ARN of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string when lambda.iam.execRole.enabled is false."
-  value       = try(var.lambda.iam.execRole.enabled, false) ? aws_iam_role.lambda_exec[0].arn : ""
+  description = "ARN of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string unless a schedule is configured or lambda.iam.execRole.enabled is true."
+  value       = local.lambda_invoker_role_enabled ? aws_iam_role.lambda_exec[0].arn : ""
 }

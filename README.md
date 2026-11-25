@@ -3,8 +3,7 @@
   ** 
   ** This file was automatically generated. 
   ** 1) Make all changes to `README.yaml` 
-  ** 2) Run `make init` (you only need to do this once)
-  ** 3) Run`make readme` to rebuild this file. 
+  ** 2) Run `tronador readme build` to rebuild this file.
   -->
 [![README Header][readme_header_img]][readme_header_link]
 
@@ -17,9 +16,9 @@
 
 Terraform module that deploys an AWS Lambda function from a packaged artifact stored in S3, together with
 everything it needs to run: IAM roles and policies, a CloudWatch log group, optional VPC and EFS attachment,
-Function URLs, aliases, EventBridge schedules, and S3/SQS/DynamoDB event source triggers. The module is driven
-by a single structured `lambda` variable and is designed to be consumed through Terragrunt within the
-CloudOps Works hub-and-spoke landing zone.
+Function URLs, aliases, EventBridge Scheduler, and triggers from S3, SQS, DynamoDB Streams, SNS,
+EventBridge event buses, and Kinesis Data Streams. Configure the module through the structured
+`lambda` variable in Terragrunt.
 
 
 ---
@@ -58,16 +57,16 @@ Key capabilities:
 
 | Capability | Description |
 |------------|-------------|
-| Function deployment | Deploys a `Zip` package from S3, publishes a new version on every apply, and renders the release version into the function description. |
+| Function deployment | Deploys a `Zip` package from S3, publishes a new version on every apply, and includes the release version in the function description. |
 | Runtime tuning | Memory, timeout, reserved concurrency, provisioned concurrency, and ephemeral `/tmp` storage. |
-| IAM | A default execution role with CloudWatch Logs access, or a dedicated function role with managed policy attachments and inline statements. An optional separate invoker role grants `lambda:InvokeFunction` to other services. |
-| Networking | Optional VPC attachment with either existing security groups or a module-managed security group. Required `ec2:*` ENI permissions are attached automatically. |
+| IAM | A default execution role with CloudWatch Logs access, or a dedicated function role with managed policy attachments and inline statements. A separate invoker role is created for configured schedules or on explicit request. |
+| Networking | Optional VPC attachment with either existing security groups or a module-managed security group. The module grants the required ENI permissions when using the dedicated function role. |
 | Storage | Optional Amazon EFS access point mount. |
 | Logging | A dedicated CloudWatch log group with configurable retention, plus JSON/Text log format and per-level application and system log controls. |
-| Observability | Optional AWS X-Ray tracing in `Active` or `PassThrough` mode. |
+| Observability | Opt-in function-level X-Ray tracing with automatic write permission in `Active` mode. |
 | Invocation | Lambda Function URLs with full CORS control, and aliases with weighted routing between versions. |
 | Scheduling | One or many EventBridge Scheduler schedules, with flexible time windows, timezones, and custom payloads. |
-| Event triggers | S3 bucket notifications, SQS event source mappings, and DynamoDB Streams mappings — each with filter criteria, and with the matching IAM permissions attached automatically. |
+| Event triggers | S3 notifications, SNS standard topics, and EventBridge event-pattern rules push to Lambda; Lambda polls SQS, DynamoDB Streams, and Kinesis. |
 | Layers | Attach any number of Lambda layer versions. |
 
 ## Usage
@@ -157,6 +156,12 @@ inputs = {
 This is the file you edit. Every key below mirrors `.boilerplate/inputs.yaml`.
 
 ```yaml
+# AWS Lambda Deployment - module configuration
+#
+# This file is loaded by terragrunt.hcl as local.local_vars and wired into the
+# module inputs. Values for is_hub, spoke_def, org and extra_tags are supplied
+# by the Terragrunt hierarchy and must NOT be set here.
+
 # (Required) Namespace appended to the Lambda function name and its IAM resources.
 # The function is named "<release.name>-<namespace>". Example: dev | uat | prod
 namespace: "dev"
@@ -252,10 +257,11 @@ lambda:
   #  system_log_level: "INFO"      # (Optional) Minimum level for Lambda system logs, only honored when log_format is JSON. Valid values: DEBUG, INFO, WARN. Default: AWS default
 
   ##
-  # (Optional) AWS X-Ray tracing. Default: disabled
+  # (Optional) Function-level AWS X-Ray tracing. Default: {} (leave mode unmanaged)
+  # Remove the inline {} after tracing: before uncommenting an option below.
   tracing: {}
-  #  enabled: true    # (Optional) Enable X-Ray tracing. Default: false
-  #  mode: "Active"   # (Required when enabled) Sampling mode. Valid values: Active, PassThrough
+  #  enabled: true    # (Optional) Manage the function tracing mode. Default: false
+  #  mode: "Active"   # (Optional) Active or PassThrough. Default when enabled: Active
 
   ##
   # (Optional) Size of the function's /tmp directory.
@@ -273,11 +279,12 @@ lambda:
 
   ##
   # (Optional) IAM configuration. When iam.enabled is false, the module creates a
-  # default execution role with CloudWatch Logs access.
+  # default execution role. Logs, polling, and Active tracing permissions apply to either role.
+  # Remove the inline {} after iam: before uncommenting an option below.
   iam: {}
   #  enabled: true         # (Optional) Create a dedicated function role instead of the default role. Default: false
   #  policy_attachments:   # (Optional) Managed policies attached to the function role. Only applied when iam.enabled is true. Default: []
-  #    - arn: "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess" # (Required) Managed policy ARN.
+  #    - arn: "arn:aws:iam::123456789012:policy/my-lambda-app-policy" # (Required) Managed policy ARN.
   #  statements:           # (Optional) Inline policy statements added to the function role. Only applied when iam.enabled is true. Default: []
   #    - effect: "Allow"   # (Required) Statement effect. Valid values: Allow, Deny
   #      action:           # (Required) List of IAM actions.
@@ -293,65 +300,88 @@ lambda:
   #        - "dynamodb:Query"
   #      resource:
   #        - "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"
-  #  execRole:             # (Optional) Separate invoker role granting lambda:InvokeFunction. Required when using schedules. Default: disabled
-  #    enabled: true       # (Optional) Create the invoker role. Default: false
-  #    principals:         # (Optional) Service principals allowed to assume the role. "scheduler.amazonaws.com" is appended automatically when a schedule is configured. Default: ["lambda.amazonaws.com"]
+  #  execRole:             # (Optional) Separate invoker role. Created automatically for configured schedules.
+  #    enabled: true       # (Optional) Create an invoker role explicitly. Default: false
+  #    principals:         # (Optional) Trusted services for an explicit invoker role. Default: ["lambda.amazonaws.com"]. Scheduler trust is added with account/group restrictions.
   #      - "lambda.amazonaws.com"
   #      - "apigateway.amazonaws.com"
   # NOTE: when vpc.enabled is true the module automatically adds the required
-  # ec2:*NetworkInterface / ec2:Describe* permissions to the function role and
-  # to the invoker role. You do not need to declare them in iam.statements.
+  # ENI permissions to the dedicated function role (iam.enabled: true).
 
   ##
   # (Optional) EventBridge Scheduler configuration.
-  # Requires iam.execRole.enabled = true. Default: disabled
+  # Scheduler gets a separate invoker role automatically. Default: no schedules
   #schedule:
-  #  enabled: false               # (Optional) Create a single schedule. Mutually exclusive with schedule.multiple. Default: false
+  #  enabled: false               # (Optional) Create the standalone schedule; may be combined with multiple. Default: false
   #  schedule_group: ""           # (Optional) Name of an existing schedule group. When empty, a dedicated group is created for this function. Default: "" (create a group)
   #  expression: "rate(1 hour)"   # (Required when enabled) Schedule expression, e.g. "rate(1 hour)", "cron(0 10 * * ? *)", "at(2026-01-01T00:00:00)"
-  #  timezone: "UTC"              # (Optional) IANA timezone or UTC offset, e.g. "America/Bogota". Default: "UTC"
+  #  timezone: "UTC"              # (Optional) IANA timezone, e.g. "America/Bogota". Default: "UTC"
   #  suspended: false             # (Optional) Create the schedule in DISABLED state. Default: false
-  #  payload: {}                  # (Optional) Event payload for the function. Accepts a YAML/JSON object (encoded to JSON) or a raw string. Default: null
+  #  payload: {}                  # (Optional) Event payload encoded as JSON. Use an object for a structured event. Default: omitted
   #  flexible:                    # (Optional) Flexible time window. Default: disabled (mode OFF)
   #    enabled: true              # (Optional) Enable the flexible window. Default: false
   #    maxWindow: 20              # (Optional) Window size in minutes. Valid range 1-1440. Default: 60
-  #  multiple:                    # (Optional) Several schedules for the same function, used instead of schedule.enabled. Default: []
+  #  multiple:                    # (Optional) Additional schedules for the same function. Default: []
   #    - expression: "cron(0 10 * * ? *)" # (Required) Schedule expression for this entry.
-  #      timezone: "UTC"          # (Optional) IANA timezone or UTC offset. Default: "UTC"
+  #      timezone: "UTC"          # (Optional) IANA timezone. Default: "UTC"
   #      suspended: false         # (Optional) Create this schedule in DISABLED state. Default: false
-  #      payload: {}              # (Optional) Event payload for this entry. Default: null
+  #      payload: {}              # (Optional) Event payload for this entry, encoded as JSON. Default: omitted
   #      flexible:                # (Optional) Flexible time window for this entry. Default: disabled
   #        enabled: true          # (Optional) Enable the flexible window. Default: false
   #        maxWindow: 20          # (Optional) Window size in minutes. Default: 60
 
   ##
-  # (Optional) Event sources invoking the function. All referenced buckets,
-  # queues and tables must already exist. Default: {} (no triggers)
+  # (Optional) Event bindings, one per configured type. Referenced sources must
+  # already exist. Default: {} (no triggers)
+  # Remove the inline {} after triggers: before uncommenting the desired bindings.
   triggers: {}
-  #  s3:
+  #  s3:                            # (Optional) Direct notification; this module owns the entire bucket notification configuration.
   #    bucketName: "my-bucket"     # (Required) Name of an existing S3 bucket. Empty string disables the trigger.
+  #    sourceAccount: "123456789012" # (Optional) S3 bucket owner account. Default: provider account
   #    events:                     # (Required) S3 event types.
   #      - "s3:ObjectCreated:*"
-  #    filterPrefix: "incoming/"   # (Required) Key prefix filter. Empty string for no prefix filter.
-  #    filterSuffix: ".json"       # (Required) Key suffix filter. Empty string for no suffix filter.
-  #  sqs:
+  #    filterPrefix: "incoming/"   # (Optional) Key prefix filter. Default: no prefix filter
+  #    filterSuffix: ".json"       # (Optional) Key suffix filter. Default: no suffix filter
+  #  sqs:                           # (Optional) Event source mapping on an existing standard or FIFO queue.
   #    queueName: "my-queue"       # (Required) Name of an existing SQS queue. Empty string disables the trigger.
   #    batchSize: 10               # (Optional) Records per batch. Valid range 1-10000 (max 10 for FIFO). Default: AWS default of 10
+  #    maximumBatchingWindowInSeconds: 1 # (Optional) Batch window, 0-300 s; >=1 when explicitly setting batchSize >10. Leave unset for FIFO. Default: 0
   #    maximumConcurrency: 2       # (Optional) Maximum concurrent invocations for this source. Only applied when >= 2. Valid range 2-1000. Default: unset
   #    metricsConfig: false        # (Optional) Publish the EventCount metric for this mapping. Default: false
-  #    filterCriteria: []          # (Optional) List of event filters. Default: [] (no filtering)
-  #      - pattern: '{"body":{"Location":["New York"]}}' # (Required unless pattern_object is set) Filter pattern as a raw JSON string.
-  #      - pattern_object:         # (Required unless pattern is set) Filter pattern as a YAML object, encoded to JSON by the module.
+  #    filterCriteria:           # (Optional) Event filters. Default: [] (no filtering)
+  #      - pattern_object:       # (Required unless pattern is set) YAML object; alternatively set pattern to a JSON string.
   #          body:
   #            Location:
   #              - "New York"
-  #  dynamodb:
+  #  dynamodb:                      # (Optional) Event source mapping on an existing table with Streams enabled.
   #    tableName: "my-table"       # (Required) Name of an existing DynamoDB table with streams enabled. Empty string disables the trigger.
   #    startingPosition: "LATEST"  # (Optional) Stream position to read from. Valid values: LATEST, TRIM_HORIZON. Default: "LATEST"
   #    batchSize: 100              # (Optional) Records per batch. Valid range 1-10000. Default: AWS default of 100
+  #    maximumBatchingWindowInSeconds: 1 # (Optional) Batch window, 0-300 s; >=1 when explicitly setting batchSize >10. Default: 0
   #    maximumRetryAttempts: 3     # (Optional) Retries for a failed batch. Valid range -1 to 10000, where -1 retries until the record expires. Default: AWS default of -1
   #    metricsConfig: false        # (Optional) Publish the EventCount metric for this mapping. Default: false
-  #    filterCriteria: []          # (Optional) List of event filters, same structure as triggers.sqs.filterCriteria. Default: []
+  #    filterCriteria:           # (Optional) Event filters. Default: [] (no filtering)
+  #      - pattern_object:       # (Required unless pattern is set) YAML object; alternatively set pattern to a JSON string.
+  #          dynamodb:
+  #            Keys:
+  #              orderId:
+  #                S: ["order-42"]
+  #  sns:                           # (Optional) Direct Lambda subscription to an existing SNS standard topic.
+  #    topicArn: "arn:aws:sns:us-east-1:123456789012:orders" # (Required) Standard topic ARN. Empty or omitted disables the trigger.
+  #  eventbridge:                   # (Optional) Event-pattern rule and Lambda target on an existing classic event bus.
+  #    ruleName: "order-created-to-lambda" # (Required) Rule name, unique on the bus. Empty or omitted disables the trigger.
+  #    eventBusName: "default"      # (Optional) Name of the existing event bus. Default: "default"
+  #    eventPattern:                # (Required if ruleName is set) Non-empty EventBridge pattern object, not a raw JSON string.
+  #      source:
+  #        - "com.example.orders"
+  #      detail-type:
+  #        - "OrderCreated"
+  #  kinesis:                       # (Optional) Event source mapping on an existing Kinesis data stream, using shared throughput.
+  #    streamArn: "arn:aws:kinesis:us-east-1:123456789012:stream/orders" # (Required) Data stream ARN, not a consumer ARN. Empty or omitted disables the trigger.
+  #    startingPosition: "LATEST"  # (Optional) LATEST or TRIM_HORIZON. Default: "LATEST"
+  #    batchSize: 100              # (Optional) Records per batch, 1-10000. Default: AWS default of 100
+  #    maximumBatchingWindowInSeconds: 1 # (Optional) Batch window, 0-300 s; >=1 when explicitly setting batchSize >10. Default: 0
+  #    maximumRetryAttempts: 3     # (Optional) Retries for a failed batch, -1 to 10000. Default: AWS default of -1 (retry until records expire)
 ```
 
 ## Quick Start
@@ -394,7 +424,7 @@ lambda:
 
 ## Examples
 
-All examples below are the `inputs.yaml` produced by `terragrunt scaffold`, edited for a specific scenario.
+Use the following complete `inputs.yaml` examples or merge a labeled overlay into your scaffolded inputs.
 
 #### Minimal function
 
@@ -483,8 +513,8 @@ lambda:
 
 #### Scheduled job
 
-Runs the function hourly through EventBridge Scheduler. Scheduling requires `iam.execRole.enabled: true` —
-the module adds `scheduler.amazonaws.com` to the invoker role's trust policy automatically.
+Runs at 03:00 local time every day, with a 20-minute flexible window. Scheduler gets an invoker role
+automatically; the X-Ray permission is on the Lambda execution role, not on the invoker.
 
 ```yaml
 namespace: "prod"
@@ -503,10 +533,8 @@ lambda:
   environment:
     variables: []
   functionUrls: []
-  iam:
+  tracing:
     enabled: true
-    execRole:
-      enabled: true
   schedule:
     enabled: true
     expression: "cron(0 3 * * ? *)"
@@ -522,8 +550,9 @@ lambda:
 
 #### SQS-triggered worker
 
-Consumes an existing SQS queue with a filter on the message body. The SQS read permissions are attached to the
-function role automatically when `iam.enabled` is true.
+Consumes an existing SQS standard queue with a message-body filter. Either execution role gets the queue
+read permissions. The queue's visibility timeout must accommodate the function timeout and batching window;
+see [AWS SQS mapping guidance](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html).
 
 ```yaml
 namespace: "prod"
@@ -545,12 +574,13 @@ lambda:
       - name: "QUEUE_MODE"
         value: "batch"
   functionUrls: []
-  iam:
+  tracing:
     enabled: true
   triggers:
     sqs:
       queueName: "acme-orders"
-      batchSize: 10
+      batchSize: 25
+      maximumBatchingWindowInSeconds: 1
       maximumConcurrency: 5
       metricsConfig: true
       filterCriteria:
@@ -559,6 +589,122 @@ lambda:
               Location:
                 - "New York"
 ```
+
+#### Use existing event sources
+
+Configure at most one binding per source type under `lambda.triggers`. Different source types can coexist.
+Use sources in the Lambda function's Region; the examples assume the same AWS account. The module
+creates bindings, not the underlying bucket, queue, table, topic, bus, or stream. Source selectors
+(names and ARNs) must be known when planning. Poll mappings grant read access to the active Lambda
+execution role. If a source requires customer-managed KMS permissions, grant only the required
+key access separately (typically `kms:Decrypt`), and check the key policy.
+
+**S3 and DynamoDB Streams.** Merge the desired block under `lambda.triggers` in scaffolded
+`inputs.yaml`. Omit the other block if not needed. The bucket must be dedicated to this notification
+configuration: S3 stores notifications as a single configuration, so do not let this module and
+another stack, console workflow, or Lambda module instance manage the same bucket's notifications.
+For a different bucket owner, set `sourceAccount` to its 12-digit account ID and ensure the
+deployment credentials may configure notifications on that bucket. Enable DynamoDB Streams on
+the table before applying. This example filters on the string key `orderId`. Stream polling
+does not require separate table item permissions. See [AWS DynamoDB Streams filters](https://docs.aws.amazon.com/lambda/latest/dg/with-ddb-filtering.html).
+
+```yaml
+lambda:
+  triggers:
+    s3:
+      bucketName: "acme-uploads-use1"
+      events: ["s3:ObjectCreated:*"]
+      filterPrefix: "incoming/"
+      filterSuffix: ".json"
+    dynamodb:
+      tableName: "acme-orders"
+      startingPosition: "TRIM_HORIZON"
+      batchSize: 100
+      maximumBatchingWindowInSeconds: 1
+      maximumRetryAttempts: 3
+      filterCriteria:
+        - pattern_object:
+            dynamodb:
+              Keys:
+                orderId:
+                  S: ["order-42"]
+```
+
+**SNS, EventBridge event rules, and Kinesis.** These overlays are independent; merge only the
+bindings your handler accepts. SNS must be a standard topic. EventBridge creates the named rule
+and its target on the existing classic bus; use a unique rule name and a YAML pattern object, not
+a JSON string. Omit `eventBusName` to use the default bus. Kinesis uses shared throughput, not a
+registered enhanced fan-out consumer. For streams, use `TRIM_HORIZON` if you need to process
+retained records rather than starting at `LATEST`.
+
+```yaml
+lambda:
+  triggers:
+    sns:
+      topicArn: "arn:aws:sns:us-east-1:123456789012:acme-orders"
+    eventbridge:
+      ruleName: "acme-order-created-handler"
+      eventBusName: "acme-app-events"
+      eventPattern:
+        source: ["com.acme.orders"]
+        detail-type: ["OrderCreated"]
+    kinesis:
+      streamArn: "arn:aws:kinesis:us-east-1:123456789012:stream/acme-orders"
+      startingPosition: "LATEST"
+      batchSize: 100
+      maximumBatchingWindowInSeconds: 1
+      maximumRetryAttempts: 3
+```
+
+For SQS, DynamoDB Streams, and Kinesis, explicitly setting `batchSize` above 10 requires a
+batching window of at least one second. If you omit both settings, AWS uses its service defaults.
+For SQS FIFO with this module, keep the batch size at 10 or lower and omit the batching window.
+See [AWS event source mapping parameters](https://docs.aws.amazon.com/lambda/latest/api/API_CreateEventSourceMapping.html).
+
+#### Trace Lambda invocations with AWS X-Ray
+
+Set `tracing: {enabled: true, mode: "Active"}` under `lambda` to start sampling Lambda invocations
+regardless of which supported trigger delivered them. `mode` defaults to `Active` when
+enabled. Whichever Lambda execution role you use, the module grants `xray:PutTraceSegments`
+and `xray:PutTelemetryRecords` automatically in Active mode.
+The setting applies to the Lambda function/version, not to separate triggers or to the Scheduler
+invoker role. `PassThrough` forwards existing trace context without automatically emitting
+Lambda traces. Without an opt-in, the module leaves the tracing mode unmanaged (AWS defaults
+to `PassThrough` for a new function). To switch an existing `Active` function off, set
+`enabled: true, mode: "PassThrough"` explicitly; omitting the block is not a reliable reset.
+Sampling means that not every invocation appears in X-Ray. See
+[AWS Lambda tracing](https://docs.aws.amazon.com/lambda/latest/dg/services-xray.html).
+
+| Invocation path | What to expect upstream of Lambda |
+|-----------------|-----------------------------------|
+| EventBridge Scheduler | No schedule-level X-Ray setting; a sampled Lambda invocation can appear without a Scheduler segment. |
+| S3 notification | No notification-level setting; do not expect a trace link to the object write. |
+| SQS | AWS can link the consumer trace to a traced producer using `X-Amzn-Trace-Id` or the `AWSTraceHeader` message system attribute. [SQS and X-Ray](https://docs.aws.amazon.com/xray/latest/devguide/xray-services-sqs.html) |
+| DynamoDB Streams | No mapping-level setting or automatic writer-to-consumer trace link. |
+| SNS standard topic | For an SNS segment, the topic owner can enable topic-side Active tracing and configure the X-Ray resource policy; use a trace-aware publisher to link the publish and downstream invocation. The module does not change the topic. [SNS and X-Ray](https://docs.aws.amazon.com/xray/latest/devguide/xray-services-sns.html) |
+| EventBridge event rule | A classic bus can forward trace context from traced `PutEvents` requests; AWS service, partner, and scheduled events don't provide that EventBridge trace path. The trace header is not a field in the delivered event JSON. [EventBridge and X-Ray](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-related-service-xray.html) |
+| Kinesis Data Streams | No mapping-level setting or automatic producer-to-consumer trace link. |
+
+#### Upgrade and verify
+
+- Existing SQS and DynamoDB mappings use execution-role polling permissions, not the legacy
+  Lambda resource-policy grants. Review the plan for removal of the redundant grants. Existing
+  dedicated roles retain their former DynamoDB table-read permissions; default roles receive
+  only the stream access needed for polling.
+- S3 notification permission allows the bucket to invoke Lambda, not Lambda to access objects.
+  If the handler reads or writes objects, explicitly grant only the needed paths and actions via
+  `lambda.iam.statements` on the dedicated execution role (`lambda.iam.enabled: true`). Check
+  these grants before upgrading if a deployment depended on the former S3 trigger policy.
+- For Scheduler, an omitted or empty `schedule_group` creates/uses the module's dedicated group;
+  set `schedule_group: "default"` to select AWS's existing default group. Inspect a plan before
+  changing groups: moving a schedule can require replacement. A single schedule and additional
+  entries under `multiple` can coexist; omit both to avoid provisioning schedules. Move any schedules
+  from other groups that shared this role to a separate invoker before upgrading: the module's role
+  now trusts Scheduler only from the configured group.
+- In a sandbox, send an identifiable event through each configured source, or wait for a scheduled
+  run. Verify the invocation and payload in CloudWatch Logs; then inspect X-Ray for a sampled
+  invocation. For sources that support upstream links, repeat using a traced publisher. A successful
+  Terraform plan or a single unsampled invocation does not prove trace delivery.
 
 
 
@@ -577,26 +723,28 @@ Available targets:
 ## Requirements
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.3 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 6.35 |
 
 ## Providers
 
 | Name | Version |
-|------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.35 |
+| ---- | ------- |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.74.0 |
 
 ## Modules
 
 | Name | Source | Version |
-|------|--------|---------|
+| ---- | ------ | ------- |
 | <a name="module_tags"></a> [tags](#module\_tags) | cloudopsworks/tags/local | 1.0.10 |
 
 ## Resources
 
 | Name | Type |
-|------|------|
+| ---- | ---- |
+| [aws_cloudwatch_event_rule.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_event_rule) | resource |
+| [aws_cloudwatch_event_target.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_event_target) | resource |
 | [aws_cloudwatch_log_group.lambda_function_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_group) | resource |
 | [aws_iam_policy.lambda_function_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
 | [aws_iam_role.default_lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
@@ -608,24 +756,27 @@ Available targets:
 | [aws_iam_role_policy.lambda_function_ec2](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.lambda_function_log](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.lambda_function_trigger_dybamodb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
-| [aws_iam_role_policy.lambda_function_trigger_s3](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.lambda_function_trigger_kinesis](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.lambda_function_trigger_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.lambda_function_xray](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy_attachment.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_iam_role_policy_attachment.lambda_function_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
 | [aws_lambda_alias.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_alias) | resource |
 | [aws_lambda_event_source_mapping.lambda_dynamodb_trigger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_event_source_mapping) | resource |
+| [aws_lambda_event_source_mapping.lambda_kinesis_trigger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_event_source_mapping) | resource |
 | [aws_lambda_event_source_mapping.lambda_sqs_trigger](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_event_source_mapping) | resource |
 | [aws_lambda_function.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function) | resource |
 | [aws_lambda_function_url.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function_url) | resource |
 | [aws_lambda_permission.allow_bucket](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
-| [aws_lambda_permission.allow_dynamodb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
-| [aws_lambda_permission.allow_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
+| [aws_lambda_permission.allow_eventbridge](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
+| [aws_lambda_permission.allow_sns](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
 | [aws_lambda_provisioned_concurrency_config.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_provisioned_concurrency_config) | resource |
 | [aws_s3_bucket_notification.bucket_notification](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_notification) | resource |
 | [aws_scheduler_schedule.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/scheduler_schedule) | resource |
 | [aws_scheduler_schedule.multiple_schedule](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/scheduler_schedule) | resource |
 | [aws_scheduler_schedule_group.environ](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/scheduler_schedule_group) | resource |
 | [aws_security_group.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
+| [aws_sns_topic_subscription.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sns_topic_subscription) | resource |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
 | [aws_dynamodb_table.notification](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/dynamodb_table) | data source |
 | [aws_iam_policy_document.assume_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
@@ -634,9 +785,11 @@ Available targets:
 | [aws_iam_policy_document.lambda_exec_ec2](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_function](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_function_logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.lambda_function_xray](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_trigger_dynamodb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
-| [aws_iam_policy_document.lambda_trigger_s3](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.lambda_trigger_kinesis](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.lambda_trigger_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_partition.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/partition) | data source |
 | [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
 | [aws_s3_bucket.notification](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/s3_bucket) | data source |
 | [aws_sqs_queue.notification](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/sqs_queue) | data source |
@@ -645,12 +798,12 @@ Available targets:
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_absolute_path"></a> [absolute\_path](#input\_absolute\_path) | (Optional) Absolute path to the Lambda function sources on the runner. Supplied by the CI/CD pipeline; reserved for future use and not currently referenced by any resource. Default: "./" | `string` | `"./"` | no |
 | <a name="input_bucket_path"></a> [bucket\_path](#input\_bucket\_path) | (Optional) S3 object key of the deployment package inside versions\_bucket, e.g. "releases/my-function/1.0.0/function.zip". Default: "" | `string` | `""` | no |
 | <a name="input_extra_tags"></a> [extra\_tags](#input\_extra\_tags) | Extra tags to add to the resources | `map(string)` | `{}` | no |
 | <a name="input_is_hub"></a> [is\_hub](#input\_is\_hub) | Is this a hub or spoke configuration? | `bool` | `false` | no |
-| <a name="input_lambda"></a> [lambda](#input\_lambda) | (Required) AWS Lambda function configuration. Supports runtime settings, environment variables, function URLs, aliases, layers, VPC and EFS attachment, logging, X-Ray tracing, IAM roles, EventBridge schedules, and S3/SQS/DynamoDB triggers. See the inline documentation above for every supported attribute. Default: {} | `any` | `{}` | no |
+| <a name="input_lambda"></a> [lambda](#input\_lambda) | (Required) AWS Lambda function configuration. Supports runtime settings, environment variables, function URLs, aliases, layers, VPC and EFS attachment, logging, X-Ray tracing, IAM roles, EventBridge Scheduler, and S3, SQS, DynamoDB Streams, SNS, EventBridge event rules, and Kinesis triggers. See the inline documentation above for every supported attribute. Default: {} | `any` | `{}` | no |
 | <a name="input_logs_bucket"></a> [logs\_bucket](#input\_logs\_bucket) | (Optional) Name of the S3 bucket for application logs. Supplied by the CI/CD pipeline; reserved for future use and not currently referenced by any resource. Default: "" | `string` | `""` | no |
 | <a name="input_namespace"></a> [namespace](#input\_namespace) | (Required) Namespace appended to the Lambda function name and its IAM resources, e.g. "dev". Combined with release.name to form the function name "<release.name>-<namespace>". | `string` | n/a | yes |
 | <a name="input_org"></a> [org](#input\_org) | Organization details | <pre>object({<br/>    organization_name = string<br/>    organization_unit = string<br/>    environment_type  = string<br/>    environment_name  = string<br/>  })</pre> | n/a | yes |
@@ -662,12 +815,12 @@ Available targets:
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ---- | ----------- |
 | <a name="output_function_arn"></a> [function\_arn](#output\_function\_arn) | Unqualified ARN of the deployed Lambda function. |
 | <a name="output_function_invoke_arn"></a> [function\_invoke\_arn](#output\_function\_invoke\_arn) | ARN to be used by API Gateway and other integrations to invoke the Lambda function. |
 | <a name="output_function_name"></a> [function\_name](#output\_function\_name) | Name of the deployed Lambda function, formed as "<release.name>-<namespace>". |
-| <a name="output_lambda_exec_role"></a> [lambda\_exec\_role](#output\_lambda\_exec\_role) | Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string when lambda.iam.execRole.enabled is false. |
-| <a name="output_lambda_exec_role_arn"></a> [lambda\_exec\_role\_arn](#output\_lambda\_exec\_role\_arn) | ARN of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string when lambda.iam.execRole.enabled is false. |
+| <a name="output_lambda_exec_role"></a> [lambda\_exec\_role](#output\_lambda\_exec\_role) | Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string unless a schedule is configured or lambda.iam.execRole.enabled is true. |
+| <a name="output_lambda_exec_role_arn"></a> [lambda\_exec\_role\_arn](#output\_lambda\_exec\_role\_arn) | ARN of the IAM invoker role granting lambda:InvokeFunction on this function. Empty string unless a schedule is configured or lambda.iam.execRole.enabled is true. |
 | <a name="output_lambda_function_role"></a> [lambda\_function\_role](#output\_lambda\_function\_role) | Name of the IAM role assumed by the Lambda function at runtime. Returns the dedicated function role when lambda.iam.enabled is true, otherwise the default role created by this module. |
 | <a name="output_lambda_function_role_arn"></a> [lambda\_function\_role\_arn](#output\_lambda\_function\_role\_arn) | ARN of the IAM role assumed by the Lambda function at runtime. Returns the dedicated function role when lambda.iam.enabled is true, otherwise the default role created by this module. |
 

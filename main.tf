@@ -29,7 +29,7 @@ locals {
 resource "aws_lambda_function" "lambda_function" {
   function_name                  = format("%s-%s", var.release.name, var.namespace)
   description                    = "Lambda ${var.release.name}@${var.release.source.version} - ${local.system_name}"
-  role                           = try(var.lambda.iam.enabled, false) ? aws_iam_role.lambda_function[0].arn : aws_iam_role.default_lambda_function[0].arn
+  role                           = local.lambda_execution_role_arn
   handler                        = var.lambda.handler
   runtime                        = var.lambda.runtime
   s3_bucket                      = var.versions_bucket
@@ -83,9 +83,9 @@ resource "aws_lambda_function" "lambda_function" {
   }
 
   dynamic "tracing_config" {
-    for_each = try(var.lambda.tracing.enabled, false) ? [1] : []
+    for_each = local.lambda_tracing_mode == null ? [] : [local.lambda_tracing_mode]
     content {
-      mode = var.lambda.tracing.mode
+      mode = tracing_config.value
     }
   }
 
@@ -93,6 +93,9 @@ resource "aws_lambda_function" "lambda_function" {
 
   depends_on = [
     aws_iam_role_policy_attachment.lambda_function_logs,
+    aws_iam_role_policy.lambda_function_log,
+    aws_iam_role_policy.lambda_function_ec2,
+    aws_iam_role_policy.lambda_function_xray,
     aws_cloudwatch_log_group.lambda_function_logs,
   ]
 }
