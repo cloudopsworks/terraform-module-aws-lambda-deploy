@@ -59,7 +59,7 @@ Key capabilities:
 |------------|-------------|
 | Function deployment | Deploys a `Zip` package from S3, publishes a new version on every apply, and includes the release version in the function description. |
 | Runtime tuning | Memory, timeout, reserved concurrency, provisioned concurrency, and ephemeral `/tmp` storage. |
-| IAM | A default execution role with CloudWatch Logs access, or a dedicated function role with managed policy attachments and inline statements. A separate invoker role is created for configured schedules, configured service callers, or on explicit request. |
+| IAM | A default execution role with CloudWatch Logs access, or a dedicated function role with managed policy attachments and inline statements. A separate invoker role is created for direct triggers (S3, SNS, EventBridge rules, or Scheduler), additional configured callers, or on explicit request. |
 | Networking | Optional VPC attachment with either existing security groups or a module-managed security group. The module grants the required ENI permissions when using the dedicated function role. |
 | Storage | Optional Amazon EFS access point mount. |
 | Logging | A dedicated CloudWatch log group with configurable retention, plus JSON/Text log format and per-level application and system log controls. |
@@ -300,9 +300,9 @@ lambda:
   #        - "dynamodb:Query"
   #      resource:
   #        - "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"
-  #  execRole:             # (Optional) Separate invoker role. Created automatically for configured schedules.
-  #    enabled: true       # (Optional) Omit to enable from a non-empty principals list. False disables custom callers, not managed schedules.
-  #    principals:         # (Optional) Services that assume this role. Default: none, or ["lambda.amazonaws.com"] when explicitly enabled.
+  #  execRole:             # (Optional) Invoker role created for S3, SNS, EventBridge rules, or Scheduler. Polled sources do not create it.
+  #    enabled: true       # (Optional) Omit to enable from a non-empty principals list. False disables configured callers, not inferred trigger callers.
+  #    principals:         # (Optional) Additional trusted services. Default: none, or ["lambda.amazonaws.com"] when explicitly enabled. Do not repeat inferred services.
   #      - "apigateway.amazonaws.com" # Only for an API Gateway integration using lambda_exec_role_arn as credentials.
   # NOTE: when vpc.enabled is true the module automatically adds the required
   # ENI permissions to the dedicated function role (iam.enabled: true).
@@ -547,29 +547,40 @@ lambda:
       notify: true
 ```
 
-#### Allow a service to assume the invoker role
+#### Combine trigger principals with an additional caller
 
-If API Gateway uses role credentials to invoke the function, merge this into `inputs.yaml`
-and set the integration's credentials ARN to the module output `lambda_exec_role_arn`:
+This `inputs.yaml` overlay trusts both the SNS topic's service principal and API Gateway.
+Only API Gateway needs listing. For a role-based API Gateway integration, set its credentials
+ARN to the module output `lambda_exec_role_arn`.
+[API Gateway integration credentials](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-swagger-extensions-integration.html)
 
 ```yaml
 lambda:
+  triggers:
+    sns:
+      topicArn: "arn:aws:sns:us-east-1:123456789012:order-notifications"
   iam:
     execRole:
       principals: ["apigateway.amazonaws.com"]
 ```
 
-List only services that assume the role. Without their service principal in the trust policy,
-they cannot use the role's `lambda:InvokeFunction` permission. A non-empty list now opts in
-without `enabled: true`; set `execRole.enabled: false` to keep a preconfigured list inactive.
-Explicit `enabled: true` without a list retains the legacy `lambda.amazonaws.com` default.
-An explicitly empty list with `enabled: true` is valid only if a managed schedule uses the role.
-[API Gateway integration credentials](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-swagger-extensions-integration.html)
+| Configured trigger | Inferred invoker role trust | How the event reaches Lambda |
+|---|---|---|
+| S3 notification | `s3.amazonaws.com` — bucket ARN and owner account | Bucket invokes through the function policy. |
+| SNS topic | `sns.amazonaws.com` — topic ARN and topic owner account | Topic invokes through the function policy. |
+| EventBridge rule | `events.amazonaws.com` — rule ARN and account | Rule invokes through the function policy. |
+| EventBridge Scheduler | `scheduler.amazonaws.com` — schedule group ARN and account | Scheduler assumes the invoker role. |
+| SQS, DynamoDB Streams, Kinesis | None | Lambda polls using its execution role. |
 
-Managed schedules always get separate, group-scoped trust for `scheduler.amazonaws.com`.
-S3, SNS, and EventBridge rules use source-scoped permissions on the function instead.
-SQS, DynamoDB Streams, and Kinesis use polling permissions on the Lambda execution role.
-None of those six triggers needs an entry in `execRole.principals`.
+Enabling any direct trigger creates the invoker role, even without an `iam` block. Native S3,
+SNS, and EventBridge rule delivery still uses the source-scoped permissions on the function;
+role trust does not replace them. [Lambda service permissions](https://docs.aws.amazon.com/lambda/latest/dg/permissions-function-services.html)
+
+Use `principals` for **additional** service callers. Listing a non-Scheduler service explicitly
+retains its existing trust without source restrictions, even if it is also inferred. A managed
+Scheduler always stays scoped to its group. Set `execRole.enabled: false` to ignore the configured
+list without disabling trigger inference. For compatibility, `enabled: true` with an omitted
+or null list still adds `lambda.amazonaws.com`; use `principals: []` for trigger-only trust.
 
 #### SQS-triggered worker
 
@@ -718,6 +729,8 @@ Sampling means that not every invocation appears in X-Ray. See
   If the handler reads or writes objects, explicitly grant only the needed paths and actions via
   `lambda.iam.statements` on the dedicated execution role (`lambda.iam.enabled: true`). Check
   these grants before upgrading if a deployment depended on the former S3 trigger policy.
+- If S3, SNS, or EventBridge rules previously needed no invoker role, expect a new IAM role
+  and invoke policy in the plan. Polling-only deployments do not gain a role.
 - For Scheduler, an omitted or empty `schedule_group` creates/uses the module's dedicated group;
   set `schedule_group: "default"` to select AWS's existing default group. Inspect a plan before
   changing groups: moving a schedule can require replacement. A single schedule and additional
@@ -842,8 +855,8 @@ Available targets:
 | <a name="output_function_arn"></a> [function\_arn](#output\_function\_arn) | Unqualified ARN of the deployed Lambda function. |
 | <a name="output_function_invoke_arn"></a> [function\_invoke\_arn](#output\_function\_invoke\_arn) | ARN to be used by API Gateway and other integrations to invoke the Lambda function. |
 | <a name="output_function_name"></a> [function\_name](#output\_function\_name) | Name of the deployed Lambda function, formed as "<release.name>-<namespace>". |
-| <a name="output_lambda_exec_role"></a> [lambda\_exec\_role](#output\_lambda\_exec\_role) | Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty when there are no schedules, enabled callers, or explicitly enabled invoker role. |
-| <a name="output_lambda_exec_role_arn"></a> [lambda\_exec\_role\_arn](#output\_lambda\_exec\_role\_arn) | ARN to use as integration credentials for a service trusted to invoke this function. Empty when there are no schedules, enabled callers, or explicitly enabled invoker role. |
+| <a name="output_lambda_exec_role"></a> [lambda\_exec\_role](#output\_lambda\_exec\_role) | Name of the IAM invoker role granting lambda:InvokeFunction on this function. Empty unless a direct trigger (S3, SNS, EventBridge rule, or Scheduler), a configured caller, or explicit role enablement creates the role. |
+| <a name="output_lambda_exec_role_arn"></a> [lambda\_exec\_role\_arn](#output\_lambda\_exec\_role\_arn) | ARN to use as integration credentials for a service trusted to invoke this function. Empty unless a direct trigger (S3, SNS, EventBridge rule, or Scheduler), a configured caller, or explicit role enablement creates the role. |
 | <a name="output_lambda_function_role"></a> [lambda\_function\_role](#output\_lambda\_function\_role) | Name of the IAM role assumed by the Lambda function at runtime. Returns the dedicated function role when lambda.iam.enabled is true, otherwise the default role created by this module. |
 | <a name="output_lambda_function_role_arn"></a> [lambda\_function\_role\_arn](#output\_lambda\_function\_role\_arn) | ARN of the IAM role assumed by the Lambda function at runtime. Returns the dedicated function role when lambda.iam.enabled is true, otherwise the default role created by this module. |
 

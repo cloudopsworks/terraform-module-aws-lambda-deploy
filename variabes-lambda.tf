@@ -77,9 +77,9 @@
 #           - "s3:GetObject"
 #         resource:                   # (Required) List of resource ARNs, e.g. ["arn:aws:s3:::my-bucket/*"] or ["*"].
 #           - "arn:aws:s3:::my-bucket/*"
-#     execRole:                       # (Optional) Separate invoker role granting lambda:InvokeFunction on this function. Created automatically for configured schedules.
-#       enabled: true                 # (Optional) Omit to enable from a non-empty principals list. False disables custom callers, not managed schedules.
-#       principals:                   # (Optional) Services that assume the invoker role. Default: none, or ["lambda.amazonaws.com"] when explicitly enabled. Managed Scheduler trust is automatic.
+#     execRole:                       # (Optional) Invoker role created for S3, SNS, EventBridge rules, or Scheduler. Polled sources do not create it.
+#       enabled: true                 # (Optional) Omit to enable from a non-empty principals list. False disables configured callers, not inferred trigger callers.
+#       principals:                   # (Optional) Additional trusted services. Default: none, or ["lambda.amazonaws.com"] when explicitly enabled. Do not repeat inferred services.
 #         - "apigateway.amazonaws.com"
 #
 #   schedule:                         # (Optional) EventBridge Scheduler configuration. Scheduler gets a separate invoker role automatically. Default: no schedules

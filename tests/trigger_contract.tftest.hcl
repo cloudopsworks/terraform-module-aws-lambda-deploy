@@ -123,8 +123,9 @@ run "null_and_empty_trigger_selectors" {
       length(aws_lambda_event_source_mapping.lambda_kinesis_trigger) == 0,
       length(aws_sns_topic_subscription.lambda_function) == 0,
       length(aws_cloudwatch_event_target.lambda_function) == 0,
+      length(aws_iam_role.lambda_exec) == 0,
     ])
-    error_message = "Empty and null selectors must disable their bindings."
+    error_message = "Empty and null selectors must disable their bindings and not provision an invoker role."
   }
 }
 
@@ -332,19 +333,33 @@ run "all_triggers_can_share_one_traced_function" {
       aws_scheduler_schedule.multiple_schedule["sched-ingest-test-0"].state == "DISABLED" &&
       jsondecode(one(aws_scheduler_schedule.lambda_function[0].target).input).mode == "reconcile" &&
       output.lambda_exec_role == "ingest-test-exec-role" &&
-      toset(one(data.aws_iam_policy_document.lambda_exec[0].statement).actions) == toset(["lambda:InvokeFunction"]) &&
-      toset(one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).identifiers) == toset(["scheduler.amazonaws.com"]) &&
-      anytrue([
-        for condition in one(data.aws_iam_policy_document.lambda_assume_role[0].statement).condition :
-        condition.variable == "aws:SourceAccount" && toset(condition.values) == toset(["123456789012"])
+      toset(one(data.aws_iam_policy_document.lambda_exec[0].statement).actions) == toset(["lambda:InvokeFunction"])
+    )
+    error_message = "Both schedule paths must share the generated group and the implicit invoker must only grant Lambda invocation."
+  }
+
+  assert {
+    condition = (
+      length(data.aws_iam_policy_document.lambda_assume_role[0].statement) == 4 &&
+      toset(flatten([
+        for statement in data.aws_iam_policy_document.lambda_assume_role[0].statement :
+        one(statement.principals).identifiers
+      ])) == toset(["s3.amazonaws.com", "sns.amazonaws.com", "events.amazonaws.com", "scheduler.amazonaws.com"]) &&
+      alltrue([
+        for statement in data.aws_iam_policy_document.lambda_assume_role[0].statement :
+        one(statement.principals).type == "Service" &&
+        toset(statement.actions) == toset(["sts:AssumeRole"])
       ]) &&
       anytrue([
-        for condition in one(data.aws_iam_policy_document.lambda_assume_role[0].statement).condition :
-        condition.variable == "aws:SourceArn" &&
-        toset(condition.values) == toset(["arn:aws:scheduler:us-east-1:123456789012:schedule-group/sched-grp-ingest-test"])
+        for statement in data.aws_iam_policy_document.lambda_assume_role[0].statement :
+        toset(one(statement.principals).identifiers) == toset(["scheduler.amazonaws.com"]) &&
+        tomap({ for condition in statement.condition : condition.variable => one(condition.values) }) == tomap({
+          "aws:SourceAccount" = "123456789012"
+          "aws:SourceArn"     = "arn:aws:scheduler:us-east-1:123456789012:schedule-group/sched-grp-ingest-test"
+        })
       ])
     )
-    error_message = "Both schedule paths must share the generated group; the implicit invoker must trust only Scheduler, scoped to that group and account."
+    error_message = "The combined invoker trust should infer each direct trigger without trusting polling sources, and scope Scheduler to the generated group and account."
   }
 }
 
@@ -449,6 +464,139 @@ run "explicit_invoker_preserves_other_trust_for_existing_schedule_group" {
       ])
     )
     error_message = "The explicit non-Scheduler principal should retain its own trust, separate from the condition-scoped Scheduler principal."
+  }
+}
+
+run "s3_infers_invoker_for_bucket_owner" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam = { execRole = { enabled = false, principals = ["apigateway.amazonaws.com"] } }
+      triggers = {
+        s3 = {
+          bucketName    = "incoming-documents"
+          events        = ["s3:ObjectCreated:*"]
+          sourceAccount = "210987654321"
+        }
+      }
+    })
+  }
+
+  assert {
+    condition = (
+      output.lambda_exec_role == "ingest-test-exec-role" &&
+      toset(one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).identifiers) == toset(["s3.amazonaws.com"]) &&
+      tomap({
+        for condition in one(data.aws_iam_policy_document.lambda_assume_role[0].statement).condition :
+        condition.variable => one(condition.values)
+        }) == tomap({
+        "aws:SourceAccount" = "210987654321"
+        "aws:SourceArn"     = "arn:aws:s3:::incoming-documents"
+      })
+    )
+    error_message = "S3 must infer an invoker scoped to the bucket and configured owner even if custom caller trust is disabled."
+  }
+}
+
+run "sns_infers_invoker_for_topic_owner" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      triggers = { sns = { topicArn = "arn:aws:sns:us-east-1:210987654321:order-notifications" } }
+    })
+  }
+
+  assert {
+    condition = try(
+      output.lambda_exec_role == "ingest-test-exec-role" &&
+      toset(one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).identifiers) == toset(["sns.amazonaws.com"]) &&
+      tomap({
+        for condition in one(data.aws_iam_policy_document.lambda_assume_role[0].statement).condition :
+        condition.variable => one(condition.values)
+        }) == tomap({
+        "aws:SourceAccount" = "210987654321"
+        "aws:SourceArn"     = "arn:aws:sns:us-east-1:210987654321:order-notifications"
+      }),
+      false,
+    )
+    error_message = "An SNS-only trigger must provision an invoker scoped to the configured topic and its owner, not the Lambda account."
+  }
+}
+
+run "event_rule_alone_infers_invoker_before_rule_arn_is_known" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      triggers = {
+        eventbridge = { ruleName = "orders-created", eventPattern = { source = ["app.orders"] } }
+      }
+    })
+  }
+
+  assert {
+    condition = (
+      output.lambda_exec_role == "ingest-test-exec-role" &&
+      toset(one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).identifiers) == toset(["events.amazonaws.com"])
+    )
+    error_message = "An EventBridge rule alone must plan a role trusting events.amazonaws.com even before the rule ARN is computed."
+  }
+}
+
+run "polling_triggers_do_not_create_an_invoker" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      triggers = {
+        sqs      = { queueName = "orders" }
+        dynamodb = { tableName = "orders" }
+        kinesis  = { streamArn = "arn:aws:kinesis:us-east-1:123456789012:stream/order-events" }
+      }
+    })
+  }
+
+  assert {
+    condition = (
+      length(aws_iam_role.lambda_exec) == 0 &&
+      output.lambda_exec_role == "" &&
+      aws_iam_role_policy.lambda_function_trigger_sqs[0].role == output.lambda_function_role &&
+      aws_iam_role_policy.lambda_function_trigger_dybamodb[0].role == output.lambda_function_role &&
+      aws_iam_role_policy.lambda_function_trigger_kinesis[0].role == output.lambda_function_role
+    )
+    error_message = "Polling triggers should use the function execution role, not create an invoker role."
+  }
+}
+
+run "configured_and_inferred_invokers_are_deduplicated" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      iam      = { execRole = { principals = ["apigateway.amazonaws.com", "s3.amazonaws.com", "s3.amazonaws.com", "scheduler.amazonaws.com"] } }
+      schedule = { enabled = true, expression = "rate(1 hour)" }
+      triggers = {
+        s3  = { bucketName = "incoming-documents", events = ["s3:ObjectCreated:*"] }
+        sns = { topicArn = "arn:aws:sns:us-east-1:123456789012:order-notifications" }
+      }
+    })
+  }
+
+  assert {
+    condition = (
+      length(data.aws_iam_policy_document.lambda_assume_role[0].statement) == 3 &&
+      anytrue([
+        for statement in data.aws_iam_policy_document.lambda_assume_role[0].statement :
+        toset(one(statement.principals).identifiers) == toset(["apigateway.amazonaws.com", "s3.amazonaws.com"]) &&
+        length(one(statement.principals).identifiers) == 2 && length(statement.condition) == 0
+      ]) &&
+      alltrue([
+        for principal in ["sns.amazonaws.com", "scheduler.amazonaws.com"] :
+        anytrue([
+          for statement in data.aws_iam_policy_document.lambda_assume_role[0].statement :
+          toset(one(statement.principals).identifiers) == toset([principal]) &&
+          toset([for condition in statement.condition : condition.variable]) == toset(["aws:SourceAccount", "aws:SourceArn"])
+        ])
+      ])
+    )
+    error_message = "Overlapping callers must be deduplicated, preserve legacy custom S3 trust, and keep SNS and Scheduler scoped."
   }
 }
 

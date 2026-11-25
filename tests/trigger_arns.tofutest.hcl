@@ -25,6 +25,9 @@ mock_provider "aws" {
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/example-platform/ingest-test-lambda-role" }
   }
+  mock_resource "aws_iam_policy" {
+    defaults = { arn = "arn:aws:iam::123456789012:policy/ingest-test-logs-policy" }
+  }
 }
 
 override_resource {
@@ -90,5 +93,40 @@ run "bind_to_the_correct_rule_function_and_role_arns" {
       one(schedule.target).role_arn != output.lambda_function_role_arn
     ])
     error_message = "Each schedule must target the published Lambda ARN with the separate invoker role."
+  }
+}
+
+run "event_rule_infers_invoker_for_exact_custom_bus_rule" {
+  command = plan
+  variables {
+    lambda = merge(jsondecode(file("tests/fixtures/lambda.json")), {
+      triggers = {
+        eventbridge = {
+          ruleName     = "orders-created"
+          eventBusName = "commerce"
+          eventPattern = { source = ["app.orders"] }
+        }
+      }
+    })
+  }
+
+  assert {
+    condition = (
+      output.lambda_exec_role == "ingest-test-exec-role" &&
+      toset(one(one(data.aws_iam_policy_document.lambda_assume_role[0].statement).principals).identifiers) == toset(["events.amazonaws.com"]) &&
+      tomap({
+        for condition in one(data.aws_iam_policy_document.lambda_assume_role[0].statement).condition :
+        condition.variable => one(condition.values)
+        }) == tomap({
+        "aws:SourceAccount" = "123456789012"
+        "aws:SourceArn"     = "arn:aws:events:us-east-1:123456789012:rule/commerce/orders-created"
+      }) &&
+      alltrue([
+        for condition in one(data.aws_iam_policy_document.lambda_assume_role[0].statement).condition :
+        condition.test == "StringEquals" || (condition.variable == "aws:SourceArn" && condition.test == "ArnEquals")
+      ]) &&
+      aws_lambda_permission.allow_eventbridge[0].source_arn == aws_cloudwatch_event_rule.lambda_function[0].arn
+    )
+    error_message = "An EventBridge-only trigger must scope invoker trust and the existing Lambda resource permission to the exact custom-bus rule."
   }
 }

@@ -12,6 +12,7 @@
 #
 locals {
   s3_bucket_name      = try(var.lambda.triggers.s3.bucketName, null)
+  s3_source_account   = coalesce(try(var.lambda.triggers.s3.sourceAccount, null), data.aws_caller_identity.current.account_id)
   sqs_queue_name      = try(var.lambda.triggers.sqs.queueName, null)
   dynamodb_table_name = try(var.lambda.triggers.dynamodb.tableName, null)
 
@@ -26,16 +27,13 @@ data "aws_s3_bucket" "notification" {
 }
 
 resource "aws_lambda_permission" "allow_bucket" {
-  count         = local.s3_trigger_enabled ? 1 : 0
-  statement_id  = "AllowExecutionFromS3Bucket"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda_function.function_name
-  principal     = "s3.amazonaws.com"
-  source_arn    = data.aws_s3_bucket.notification[0].arn
-  source_account = coalesce(
-    try(var.lambda.triggers.s3.sourceAccount, null),
-    data.aws_caller_identity.current.account_id,
-  )
+  count          = local.s3_trigger_enabled ? 1 : 0
+  statement_id   = "AllowExecutionFromS3Bucket"
+  action         = "lambda:InvokeFunction"
+  function_name  = aws_lambda_function.lambda_function.function_name
+  principal      = "s3.amazonaws.com"
+  source_arn     = data.aws_s3_bucket.notification[0].arn
+  source_account = local.s3_source_account
 }
 
 resource "aws_s3_bucket_notification" "bucket_notification" {
